@@ -20,7 +20,7 @@ var (
 	empt     = [32]byte{}
 	//_genesisHash, _ = hex.DecodeString("43497fd7f826957108f4a30fd9cec3aeba79972084e90ead01ea330900000000")
 	genesisHash = [32]byte{}
-	maxBlocks   = 100000
+	maxBlocks   = 500000
 )
 
 type BlockHead struct {
@@ -38,6 +38,7 @@ type BlockHead struct {
 type Block struct {
 	// A custom block object for processing
 	PrevBlock *Block
+	NextBlock *Block
 	Head      *BlockHead
 	RelTxs    []*btcwire.MsgTx
 	Hash      [32]byte
@@ -85,6 +86,7 @@ func proceed(f *os.File) bool {
 		discrim := binary.BigEndian.Uint32(b[:])
 		if discrim != 0x00000000 {
 			// seek backwards to start of block
+			// TODO make more effecient
 			f.Seek(-4, 1)
 			return true
 		}
@@ -101,18 +103,18 @@ func playWithFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([
 	}
 	defer file.Close()
 
-	genesis := false
+	seenGenesis := true
 	if len(blkList) == 0 {
-		genesis = true
+		seenGenesis = false
 	}
-	bad := 0
-	for i := 0; i < maxBlocks; i++ {
+	for {
 		var blk Block
 		var bh BlockHead
 
 		ok := proceed(file)
 		if !ok {
 			fmt.Println("Hit end of file: ", fname)
+			break
 		}
 		err = binary.Read(file, binary.LittleEndian, &bh)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
@@ -128,11 +130,7 @@ func playWithFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([
 			logger.Fatal(err)
 		}
 
-		//printBlockHead(bh)
-		//fmt.Printf("num_tx:\t\t%d\n", tx_num)
-
 		hash := blockHash(bh)
-
 		for i := uint64(0); i < tx_num; i++ {
 			tx := btcwire.MsgTx{}
 			err := tx.Deserialize(file)
@@ -141,28 +139,23 @@ func playWithFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([
 			}
 		}
 
-		if genesis {
-			blk = Block{
-				PrevBlock: nil,
-				Head:      &bh,
-				RelTxs:    make([]*btcwire.MsgTx, 0),
-				Hash:      hash,
-				depth:     0,
+		blk = Block{
+			//	PrevBlock: nil,
+			Head:   &bh,
+			RelTxs: make([]*btcwire.MsgTx, 0),
+			Hash:   hash,
+			depth:  1,
+		}
+		if !seenGenesis {
+			seenGenesis = true
+			genesisHash = hash
+			// Make the hash of the genesis block useful
+			var s [32]byte
+			copy(s[:], hash[:])
+			for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+				s[i], s[j] = s[j], s[i]
 			}
-			genesis = false
-			fmt.Printf("The hash of the genesis block:\n%x\n", hash)
-		} else {
-			prevBlock, ok := blkMap[bh.PrevHash]
-			if !ok {
-				logger.Fatal("No prevhash in older block files")
-			}
-			// use last blk to find prevhash
-			blk = Block{
-				PrevBlock: prevBlock,
-				Head:      &bh,
-				RelTxs:    make([]*btcwire.MsgTx, 0),
-				Hash:      hash,
-			}
+			fmt.Printf("The hash of the genesis block:\n%x\n", s)
 		}
 		blkMap[hash] = &blk
 		blkList = append(blkList, &blk)
@@ -171,35 +164,32 @@ func playWithFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([
 	return blkList, blkMap
 }
 
-func calcHeight(blkList []*Block) int {
+func calcHeight(blkList []*Block, blkMap map[[32]byte]*Block) int {
 	// Computes the best chain's total height by starting from the latest blocks
 	// and working pack to the genesis block.
-	var blk *Block
 	for j := len(blkList) - 1; j >= 0; j-- {
-		blk = blkList[j]
-		if blk.depth == 0 {
-			blk.depth = 1
-		}
+		blk := blkList[j]
 		//if blk.PrevBlock == nil && blk.Hash == genesisHash {
 		if blk.Hash == genesisHash {
-			println("found genesis hash", j)
-			break
+			println("Found Genesis Hash")
+			return blk.depth
 		}
 		nextD := blk.depth + 1
-		if blk.PrevBlock != nil && blk.PrevBlock.depth < nextD {
-			blk.PrevBlock.depth = nextD
+		prevBlock, ok := blkMap[blk.Head.PrevHash]
+		if ok {
+			if prevBlock.depth < nextD {
+				prevBlock.depth = nextD
+			}
 		}
 	}
-	return blk.depth
+	return -1
 }
 
 func main() {
 	flag.Parse()
 
 	//copy(genesisHash[:], _genesisHash)
-
 	glob := "/blk*.dat"
-
 	blockfiles, err := filepath.Glob(*blockdir + glob)
 	if err != nil {
 		log.Fatal(err)
@@ -208,24 +198,70 @@ func main() {
 		log.Fatal(errors.New("Could not find any blockfiles at " + *blockdir))
 	}
 
-	var blkList []*Block
-	var blkMap map[[32]byte]*Block
-	blkList = make([]*Block, 0, maxBlocks)
-	blkMap = make(map[[32]byte]*Block)
+	blkList := make([]*Block, 0, maxBlocks)
+	blkMap := make(map[[32]byte]*Block)
 	for _, filename := range blockfiles {
 		println(filename)
 		blkList, blkMap = playWithFile(filename, blkList, blkMap)
 		fmt.Println("Processed:", len(blkList))
 	}
 
-	println("Finding blockchain height")
-	h := calcHeight(blkList)
+	println("Finding blockchain tip")
+	println(len(blkList))
+	genesisBlk := linkChain(blkList, blkMap)
+	tip, h := chainTip(genesisBlk)
 	println("Height: ", h)
+	printBlockHead(*tip.Head)
+}
+
+func linkChain(blkList []*Block, blkMap map[[32]byte]*Block) *Block {
+	// Walks the block list backwards & builds out the linked list so that on a
+	// walk back up we can return the block at the end of the longest chain
+	absents := 0
+	for j := len(blkList) - 1; j >= 0; j-- {
+		blk := blkList[j]
+		if blk.Hash == genesisHash {
+			fmt.Println("Found Genesis Hash")
+			break
+		}
+
+		prevBlk, ok := blkMap[blk.Head.PrevHash]
+		if !ok {
+			absents++
+		} else {
+			// this block points back to another block that we have in memory
+			currentD := blk.depth + 1
+			if prevBlk.depth < currentD {
+				prevBlk.depth = currentD
+				prevBlk.NextBlock = blk
+				blk.PrevBlock = prevBlk
+			}
+		}
+	}
+	fmt.Printf("blocks with absent parents: %d\n", absents)
+	genesisBlk, ok := blkMap[genesisHash]
+	if !ok {
+		logger.Fatal("Could not find the genesis block. Big problem!")
+	}
+	return genesisBlk
+}
+
+func chainTip(blk *Block) (*Block, int) {
+	return recurseTip(blk, 0)
+}
+
+func recurseTip(blk *Block, confs int) (*Block, int) {
+	if blk.NextBlock == nil {
+		return blk, confs
+	} else {
+		//		println(blk.Head.Nonce)
+		return recurseTip(blk.NextBlock, confs+1)
+	}
 }
 
 // From btcwire common.go
-// readVarInt reads a variable length integer from r and returns it as a uint64.
 func readVarInt(r io.Reader, pver uint32) (uint64, error) {
+	// readVarInt reads a variable length integer from r and returns it as a uint64.
 	var b [8]byte
 	_, err := io.ReadFull(r, b[0:1])
 	if err != nil {
@@ -280,14 +316,15 @@ func printBlockHead(blk BlockHead) {
 	}
 	hash, err := bh.BlockSha()
 	check(err)
-	fmt.Printf("Hash:\t\t%s", hash)
 	fmt.Printf(`
+Hash:		%s
 prevHash:	%s
 merkle root:	%s
 timestamp:	%s
 difficulty:	%d
 nonce:		%d
 bit len:	%d
+==========-
 `,
-		prevhash.String(), merkle.String(), timestamp, blk.Difficulty, blk.Nonce, blk.Length)
+		hash, prevhash.String(), merkle.String(), timestamp, blk.Difficulty, blk.Nonce, blk.Length)
 }
