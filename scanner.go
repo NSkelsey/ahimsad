@@ -11,14 +11,14 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/NSkelsey/btcsubprotos"
 	"github.com/conformal/btcwire"
 )
 
 var (
-	blockdir = flag.String("blockdir", "/home/ubuntu/.bitcoin/testnet3/blocks", "The directory containing bitcoin blocks")
-	logger   = log.New(os.Stdout, "", log.Llongfile)
-	empt     = [32]byte{}
-	//_genesisHash, _ = hex.DecodeString("43497fd7f826957108f4a30fd9cec3aeba79972084e90ead01ea330900000000")
+	blockdir    = flag.String("blockdir", "/root/.bitcoin/blocks", "The directory containing bitcoin blocks")
+	logger      = log.New(os.Stdout, "", log.Llongfile)
+	empt        = [32]byte{}
 	genesisHash = [32]byte{}
 	maxBlocks   = 500000
 )
@@ -81,19 +81,19 @@ func proceed(f *os.File) bool {
 		var b [4]byte
 		_, err := io.ReadFull(f, b[:])
 		if err != nil {
-			return false
+			return true
 		}
 		discrim := binary.BigEndian.Uint32(b[:])
 		if discrim != 0x00000000 {
 			// seek backwards to start of block
 			// TODO make more effecient
 			f.Seek(-4, 1)
-			return true
+			return false
 		}
 	}
 }
 
-func playWithFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]*Block, map[[32]byte]*Block) {
+func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]*Block, map[[32]byte]*Block) {
 	// given a blk file attempts to parse every block within it. Adding the block
 	// to a global list of seen blocks. Additionally we strip out the interesting
 	// transactions at this stage.
@@ -111,40 +111,42 @@ func playWithFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([
 		var blk Block
 		var bh BlockHead
 
-		ok := proceed(file)
-		if !ok {
-			fmt.Println("Hit end of file: ", fname)
+		done := proceed(file)
+		if done {
+			fmt.Printf("\rFinished file: %s", fname)
 			break
 		}
 		err = binary.Read(file, binary.LittleEndian, &bh)
 		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			fmt.Println("At the end of file: ", fname)
+			fmt.Printf("\rFinished file: %s", fname)
 			break
 		}
-		if err != nil {
-			logger.Fatal(err)
-		}
+		check(err)
 
 		tx_num, err := readVarInt(file, 0)
-		if err != nil {
-			logger.Fatal(err)
-		}
+		check(err)
 
 		hash := blockHash(bh)
+
+		reltxs := make([]*btcwire.MsgTx, 0)
+		// Process each tx in block
 		for i := uint64(0); i < tx_num; i++ {
-			tx := btcwire.MsgTx{}
+			tx := &btcwire.MsgTx{}
 			err := tx.Deserialize(file)
-			if err != nil {
-				logger.Fatal(err)
+			check(err)
+
+			if btcsubprotos.IsBulletin(tx) {
+				reltxs = append(reltxs, tx)
 			}
 		}
 
 		blk = Block{
-			//	PrevBlock: nil,
-			Head:   &bh,
-			RelTxs: make([]*btcwire.MsgTx, 0),
-			Hash:   hash,
-			depth:  1,
+			PrevBlock: nil,
+			NextBlock: nil,
+			Head:      &bh,
+			RelTxs:    reltxs,
+			Hash:      hash,
+			depth:     1,
 		}
 		if !seenGenesis {
 			seenGenesis = true
@@ -188,7 +190,6 @@ func calcHeight(blkList []*Block, blkMap map[[32]byte]*Block) int {
 func main() {
 	flag.Parse()
 
-	//copy(genesisHash[:], _genesisHash)
 	glob := "/blk*.dat"
 	blockfiles, err := filepath.Glob(*blockdir + glob)
 	if err != nil {
@@ -201,17 +202,37 @@ func main() {
 	blkList := make([]*Block, 0, maxBlocks)
 	blkMap := make(map[[32]byte]*Block)
 	for _, filename := range blockfiles {
-		println(filename)
-		blkList, blkMap = playWithFile(filename, blkList, blkMap)
-		fmt.Println("Processed:", len(blkList))
+		blkList, blkMap = processFile(filename, blkList, blkMap)
+		fmt.Printf("\tProcessed: %d", len(blkList))
 	}
 
-	println("Finding blockchain tip")
-	println(len(blkList))
+	// glue block pointers together
 	genesisBlk := linkChain(blkList, blkMap)
+	// find the tip of the longest chain
 	tip, h := chainTip(genesisBlk)
-	println("Height: ", h)
-	printBlockHead(*tip.Head)
+	fmt.Printf("\nHeight: %d\n", h)
+	//printBlockHead(*tip.Head)
+
+	txs := collectRelTxs(tip)
+	for _, tx := range txs {
+		hash, _ := tx.TxSha()
+		fmt.Println(hash.String())
+	}
+	println("We found: ", len(txs))
+}
+
+func collectRelTxs(blk *Block) []*btcwire.MsgTx {
+	txs := make([]*btcwire.MsgTx, 0, 10000)
+	for {
+		if blk.Hash == genesisHash {
+			break
+		}
+		for _, tx := range blk.RelTxs {
+			txs = append(txs, tx)
+		}
+		blk = blk.PrevBlock
+	}
+	return txs
 }
 
 func linkChain(blkList []*Block, blkMap map[[32]byte]*Block) *Block {
@@ -221,7 +242,6 @@ func linkChain(blkList []*Block, blkMap map[[32]byte]*Block) *Block {
 	for j := len(blkList) - 1; j >= 0; j-- {
 		blk := blkList[j]
 		if blk.Hash == genesisHash {
-			fmt.Println("Found Genesis Hash")
 			break
 		}
 
@@ -238,7 +258,6 @@ func linkChain(blkList []*Block, blkMap map[[32]byte]*Block) *Block {
 			}
 		}
 	}
-	fmt.Printf("blocks with absent parents: %d\n", absents)
 	genesisBlk, ok := blkMap[genesisHash]
 	if !ok {
 		logger.Fatal("Could not find the genesis block. Big problem!")
@@ -324,7 +343,7 @@ timestamp:	%s
 difficulty:	%d
 nonce:		%d
 bit len:	%d
-==========-
+==========
 `,
 		hash, prevhash.String(), merkle.String(), timestamp, blk.Difficulty, blk.Nonce, blk.Length)
 }
