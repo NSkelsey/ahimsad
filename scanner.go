@@ -1,4 +1,4 @@
-package main
+package ahimsad
 
 import (
 	"encoding/binary"
@@ -135,7 +135,7 @@ func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]
 			err := tx.Deserialize(file)
 			check(err)
 
-			if btcsubprotos.IsBulletin(tx) {
+			if btcsubprotos.IsBulletin(tx) || btcsubprotos.IsDocProof(tx) {
 				reltxs = append(reltxs, tx)
 			}
 		}
@@ -171,7 +171,6 @@ func calcHeight(blkList []*Block, blkMap map[[32]byte]*Block) int {
 	// and working pack to the genesis block.
 	for j := len(blkList) - 1; j >= 0; j-- {
 		blk := blkList[j]
-		//if blk.PrevBlock == nil && blk.Hash == genesisHash {
 		if blk.Hash == genesisHash {
 			println("Found Genesis Hash")
 			return blk.depth
@@ -187,7 +186,7 @@ func calcHeight(blkList []*Block, blkMap map[[32]byte]*Block) int {
 	return -1
 }
 
-func main() {
+func processBlocks() {
 	flag.Parse()
 
 	glob := "/blk*.dat"
@@ -240,6 +239,7 @@ func linkChain(blkList []*Block, blkMap map[[32]byte]*Block) *Block {
 	// walk back up we can return the block at the end of the longest chain
 	absents := 0
 	for j := len(blkList) - 1; j >= 0; j-- {
+		// this loop starts at the end of the blocklist and proceeds backwards
 		blk := blkList[j]
 		if blk.Hash == genesisHash {
 			break
@@ -258,6 +258,7 @@ func linkChain(blkList []*Block, blkMap map[[32]byte]*Block) *Block {
 			}
 		}
 	}
+	// obtain genesis block after linkage (it is now the root of the linked chain)
 	genesisBlk, ok := blkMap[genesisHash]
 	if !ok {
 		logger.Fatal("Could not find the genesis block. Big problem!")
@@ -269,12 +270,12 @@ func chainTip(blk *Block) (*Block, int) {
 	return recurseTip(blk, 0)
 }
 
-func recurseTip(blk *Block, confs int) (*Block, int) {
+func recurseTip(blk *Block, height int) (*Block, int) {
 	if blk.NextBlock == nil {
-		return blk, confs
+		return blk, height
 	} else {
 		//		println(blk.Head.Nonce)
-		return recurseTip(blk.NextBlock, confs+1)
+		return recurseTip(blk.NextBlock, height+1)
 	}
 }
 
