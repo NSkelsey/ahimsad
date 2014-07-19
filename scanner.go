@@ -1,9 +1,7 @@
-package ahimsad
+package main
 
 import (
 	"encoding/binary"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -16,7 +14,6 @@ import (
 )
 
 var (
-	blockdir    = flag.String("blockdir", "/root/.bitcoin/blocks", "The directory containing bitcoin blocks")
 	logger      = log.New(os.Stdout, "", log.Llongfile)
 	empt        = [32]byte{}
 	genesisHash = [32]byte{}
@@ -93,13 +90,13 @@ func proceed(f *os.File) bool {
 	}
 }
 
-func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]*Block, map[[32]byte]*Block) {
+func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]*Block, map[[32]byte]*Block, error) {
 	// given a blk file attempts to parse every block within it. Adding the block
 	// to a global list of seen blocks. Additionally we strip out the interesting
 	// transactions at this stage.
 	file, err := os.Open(fname)
 	if err != nil {
-		log.Fatal(err)
+		return blkList, blkMap, err
 	}
 	defer file.Close()
 
@@ -163,7 +160,7 @@ func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]
 		blkList = append(blkList, &blk)
 	}
 
-	return blkList, blkMap
+	return blkList, blkMap, nil
 }
 
 func calcHeight(blkList []*Block, blkMap map[[32]byte]*Block) int {
@@ -186,22 +183,26 @@ func calcHeight(blkList []*Block, blkMap map[[32]byte]*Block) int {
 	return -1
 }
 
-func processBlocks() {
-	flag.Parse()
+func runBlockScan(blockdir string, db *LiteDb) error {
+	// Reads the bitcoin ~/.bitcoin/block dir for the block chain and pushes it into
+	// the DB
 
 	glob := "/blk*.dat"
-	blockfiles, err := filepath.Glob(*blockdir + glob)
+	blockfiles, err := filepath.Glob(blockdir + glob)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if len(blockfiles) < 1 {
-		log.Fatal(errors.New("Could not find any blockfiles at " + *blockdir))
+		return fmt.Errorf("Could not find any blockfiles at %s", blockdir)
 	}
 
 	blkList := make([]*Block, 0, maxBlocks)
 	blkMap := make(map[[32]byte]*Block)
 	for _, filename := range blockfiles {
-		blkList, blkMap = processFile(filename, blkList, blkMap)
+		blkList, blkMap, err = processFile(filename, blkList, blkMap)
+		if err != nil {
+			return nil
+		}
 		fmt.Printf("\tProcessed: %d", len(blkList))
 	}
 
@@ -218,6 +219,7 @@ func processBlocks() {
 		fmt.Println(hash.String())
 	}
 	println("We found: ", len(txs))
+	return nil
 }
 
 func collectRelTxs(blk *Block) []*btcwire.MsgTx {

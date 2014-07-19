@@ -1,4 +1,4 @@
-package ahimsad
+package main
 
 import (
 	"fmt"

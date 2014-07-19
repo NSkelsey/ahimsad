@@ -11,7 +11,7 @@ It is generated from these files:
 It has these top-level messages:
 	WireBulletin
 */
-package ahimsad
+package main
 
 import proto "code.google.com/p/goprotobuf/proto"
 import math "math"

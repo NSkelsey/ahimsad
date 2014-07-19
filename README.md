@@ -6,7 +6,7 @@ ahimsa's sole purpose is to encode and decode messages in blockchains. The messa
 format is defined in a series of protocol buffers that are encoding in the TxOuts
 of transactions.
 
-We think storing tweet sized messages in blockchains is a potential usecase of for a
-crypto currency. Occasionally, you may want to store your online statements permanently
+We think storing tweet sized messages in blockchains is a potential usecase for a
+distributed timestamp authority (like the Bitcoin network). Occasionally, you may want to store your online statements permanently
 and publicly. If you are willing to pay miners for that storage ahimsad will let you 
 do it.
