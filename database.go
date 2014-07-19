@@ -17,10 +17,9 @@ var (
 type LiteDb struct {
 	writes int
 	conn   *sql.DB
-	height int
 }
 
-func LoadDb(dbpath string, height int) (*LiteDb, error) {
+func LoadDb(dbpath string) (*LiteDb, error) {
 	conn, err := sql.Open("sqlite3", dbpath)
 	if err != nil {
 		log.Fatal(err)
@@ -31,6 +30,11 @@ func LoadDb(dbpath string, height int) (*LiteDb, error) {
 	}
 
 	return db, nil
+}
+
+func (db *LiteDb) CurrentHeight() int64 {
+	// Returns the current height of the blocks in the db
+	return 0
 }
 
 func InitDb(dbpath string) (*LiteDb, error) {
