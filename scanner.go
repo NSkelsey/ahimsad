@@ -163,37 +163,31 @@ func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]
 	return blkList, blkMap, nil
 }
 
-func calcHeight(blkList []*Block, blkMap map[[32]byte]*Block) int {
-	// Computes the best chain's total height by starting from the latest blocks
-	// and working pack to the genesis block.
-	for j := len(blkList) - 1; j >= 0; j-- {
-		blk := blkList[j]
-		if blk.Hash == genesisHash {
-			println("Found Genesis Hash")
+func getHeight(blk *Block, target [32]byte) int {
+	for {
+		// give up after a few iterations
+		if blk.Hash == target {
 			return blk.depth
 		}
-		nextD := blk.depth + 1
-		prevBlock, ok := blkMap[blk.Head.PrevHash]
-		if ok {
-			if prevBlock.depth < nextD {
-				prevBlock.depth = nextD
-			}
+		if blk.PrevBlock == nil {
+			err := fmt.Errorf("walked off the end of the chain")
+			log.Fatal(err)
 		}
+		blk = blk.PrevBlock
 	}
-	return -1
 }
 
-func runBlockScan(blockdir string, db *LiteDb) error {
+func runBlockScan(blockdir string, db *LiteDb) (*Block, error) {
 	// Reads the bitcoin ~/.bitcoin/block dir for the block chain and pushes it into
 	// the DB
 
-	glob := "/blk*.dat"
+	glob := "/blk*8.dat"
 	blockfiles, err := filepath.Glob(blockdir + glob)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(blockfiles) < 1 {
-		return fmt.Errorf("Could not find any blockfiles at %s", blockdir)
+		return nil, fmt.Errorf("Could not find any blockfiles at %s", blockdir)
 	}
 
 	blkList := make([]*Block, 0, maxBlocks)
@@ -201,7 +195,7 @@ func runBlockScan(blockdir string, db *LiteDb) error {
 	for _, filename := range blockfiles {
 		blkList, blkMap, err = processFile(filename, blkList, blkMap)
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		fmt.Printf("\tProcessed: %d", len(blkList))
 	}
@@ -213,13 +207,7 @@ func runBlockScan(blockdir string, db *LiteDb) error {
 	fmt.Printf("\nHeight: %d\n", h)
 	//printBlockHead(*tip.Head)
 
-	txs := collectRelTxs(tip)
-	for _, tx := range txs {
-		hash, _ := tx.TxSha()
-		fmt.Println(hash.String())
-	}
-	println("We found: ", len(txs))
-	return nil
+	return tip, nil
 }
 
 func collectRelTxs(blk *Block) []*btcwire.MsgTx {
