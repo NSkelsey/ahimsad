@@ -181,7 +181,7 @@ func runBlockScan(blockdir string, db *LiteDb) (*Block, error) {
 	// Reads the bitcoin ~/.bitcoin/block dir for the block chain and pushes it into
 	// the DB
 
-	glob := "/blk*8.dat"
+	glob := "/blk*.dat"
 	blockfiles, err := filepath.Glob(blockdir + glob)
 	if err != nil {
 		return nil, err
@@ -337,4 +337,13 @@ bit len:	%d
 ==========
 `,
 		hash, prevhash.String(), merkle.String(), timestamp, blk.Difficulty, blk.Nonce, blk.Length)
+}
+
+func walkBackwards(blk *Block) *Block {
+	for {
+		if blk.PrevBlock == nil {
+			return blk
+		}
+		blk = blk.PrevBlock
+	}
 }

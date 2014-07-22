@@ -106,7 +106,8 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 			log.Fatal(err)
 		}
 
-		err = storeChainBulletins(tip, db, client)
+		genBlk := walkBackwards(tip)
+		err = storeChainBulletins(genBlk, db, client)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -120,35 +121,40 @@ func storeChainBulletins(genBlock *Block, db *LiteDb, client *btcrpcclient.Clien
 	// Stores all of the Bulletins we found in the blockchain into the sqlite db.
 	// This is done iteratively and is not optimized in any way. We log errors as
 	// we encounter them.
+	chainHeight := genBlock.depth
 	blks := make([]*Block, 0, 1000)
+	var blk *Block = genBlock
 	for {
-		// walk forwards through the blocks
+		// Walk forwards through the blocks
 		if blk.NextBlock == nil {
 			break
 		}
 
-		if len(batch) >= 1000 {
-			bh := btcBHFromBH(*blk.Head)
-			err := db.BatchInsertBlockHeads(bh)
+		if len(blks) >= 1000 {
+			err := db.BatchInsertBH(blks, chainHeight)
 			if err != nil {
 				return err
 			}
-			blks := make([]*Block, 0, 1000)
+			blks = make([]*Block, 0, 1000)
 		}
 		blks = append(blks, blk)
 
 		blk = blk.NextBlock
 	}
 
+	// Insert remaining blocks
+	err := db.BatchInsertBH(blks, chainHeight)
+	if err != nil {
+		return err
+	}
+
 	// We are now back at the tip
-	var tip *Block = blk
+	//var tip *Block = blk
 	for {
 		// walk backwards through blocks
 		if blk.Hash == genesisHash {
 			break
 		}
-
-		chainHeight := getHeight(blk, genesisHash)
 
 		var bh *btcwire.BlockHeader
 		bh = btcBHFromBH(*blk.Head)

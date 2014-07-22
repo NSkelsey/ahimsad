@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"log"
 
 	_ "code.google.com/p/go-sqlite/go1/sqlite3"
@@ -44,13 +43,13 @@ func (db *LiteDb) CurrentHeight() int64 {
 	defer rows.Close()
 
 	rows.Next()
-	var height *int64
-	err = rows.Scan(height)
+	var height int64
+	err = rows.Scan(&height)
 	if err != nil {
 		log.Println(err)
 		return 0
 	}
-	return *height
+	return height
 }
 
 func InitDb(dbpath string) (*LiteDb, error) {
@@ -116,7 +115,7 @@ func (db *LiteDb) storeBulletin(bltn *Bulletin) error {
 	return nil
 }
 
-func (db *LiteDb) BatchInsertBHeads(blcks []*Block) error {
+func (db *LiteDb) BatchInsertBH(blcks []*Block, height int) error {
 
 	stmt, err := db.conn.Prepare("INSERT INTO blocks (hash, prevhash, height) VALUES(?, ?, ?)")
 	if err != nil {
@@ -128,7 +127,19 @@ func (db *LiteDb) BatchInsertBHeads(blcks []*Block) error {
 		return err
 	}
 
-	tx.Stmt(stmt).Exec(fmt.Scanf("%x", blk.hash), bh.prev)
+	for _, blk := range blcks {
+		bh := btcBHFromBH(*blk.Head)
+		hash, _ := bh.BlockSha()
+		prevh := bh.PrevBlock
+		_, err = tx.Stmt(stmt).Exec(hash.String(), prevh.String(), height-blk.depth)
+		if err != nil {
+			return err
+		}
+	}
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
