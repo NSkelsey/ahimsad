@@ -96,6 +96,7 @@ func (db *LiteDb) storeBlockHead(bh *btcwire.BlockHeader, height int) error {
 
 	hash, _ := bh.BlockSha()
 
+	println(hash.String(), height)
 	_, err := db.conn.Exec(cmd, hash.String(), bh.PrevBlock.String(), height)
 	if err != nil {
 		return err
@@ -158,6 +159,28 @@ func (db *LiteDb) GetBlkRecord(target *btcwire.ShaHash) (*blockRecord, error) {
 		return nil, err
 	}
 	defer rows.Close()
+	blkrec, err := scanBlkRec(rows)
+	if err != nil {
+		return nil, err
+	}
+	return blkrec, nil
+}
+
+func (db *LiteDb) GetChainTip() (*blockRecord, error) {
+	cmd := `SELECT hash, prevhash, max(height) FROM blocks`
+	rows, err := db.conn.Query(cmd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	blkrec, err := scanBlkRec(rows)
+	if err != nil {
+		return nil, err
+	}
+	return blkrec, nil
+}
+
+func scanBlkRec(rows *sql.Rows) (*blockRecord, error) {
 	rows.Next()
 	// called for effect
 	var hash, prevhash string

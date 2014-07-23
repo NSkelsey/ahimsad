@@ -5,6 +5,7 @@ import (
 	"log"
 	"path/filepath"
 
+	"github.com/NSkelsey/btcbuilder"
 	"github.com/NSkelsey/watchtower"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcrpcclient"
@@ -19,6 +20,7 @@ var (
 	defaultConfigFile = filepath.Join(appDataDir, "ahimsa.conf")
 	defaultDbName     = filepath.Join(appDataDir, "pubrecord.db")
 	defaultBlockDir   = filepath.Join(btcutil.AppDataDir(".bitcoin", false), "blocks")
+	defaultNetwork    = "TestNet3"
 	defaultNodeAddr   = "127.0.0.1:18333"
 	// Sane defaults for a linux based OS
 	cfg = &config{
@@ -26,6 +28,7 @@ var (
 		BlockDir:   defaultBlockDir,
 		DbFile:     defaultDbName,
 		NodeAddr:   defaultNodeAddr,
+		NetName:    defaultNetwork,
 		Rebuild:    false,
 	}
 )
@@ -42,6 +45,7 @@ type config struct {
 	RPCUser     string `long:"rpcuser" description:"rpc user"`
 	RPCPassword string `long:"rpcpassword" description:"rpc password"`
 	NodeAddr    string `long:"nodeaddr" description:"Address + port of the bitcoin node to connect to"`
+	NetName     string `short:"n" long:"network" description:"The name of the network to use"`
 }
 
 func main() {
@@ -53,6 +57,11 @@ func main() {
 	}
 
 	err = flags.NewIniParser(parser).ParseFile(cfg.ConfigFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	activeNetParams, err = btcbuilder.NetParamsFromStr(cfg.NetName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,31 +78,48 @@ func main() {
 		log.Fatal(err)
 	}
 
-	println("WHAT IS GOING ON ")
-	fmt.Println(getBanner())
-	println("WHAT IS GOING ON ")
-	// Load db
-	db := loadDb(rpcclient)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	println("Db Height:", db.CurrentHeight())
-
 	rpcSubChan := make(chan *TxReq)
 
 	// start a rpc command handler
 	go authorlookup(rpcclient, rpcSubChan)
 
+	fmt.Println(getBanner())
+	db := loadDb(rpcclient)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	curH := db.CurrentHeight()
+	actualH, err := rpcclient.GetBlockCount()
+	if err != nil {
+		log.Fatal(err)
+	}
+	println("Db Height:", curH)
+
+	var towerCfg watchtower.TowerCfg
+	if actualH-curH > 0 {
+		getblocks, err := makeBlockMsg(db)
+		if err != nil {
+			log.Fatal(err)
+		}
+		towerCfg = watchtower.TowerCfg{
+			Addr:        cfg.NodeAddr,
+			Net:         activeNetParams.Net,
+			StartHeight: int(db.CurrentHeight()),
+			ToSend:      []btcwire.Message{getblocks},
+		}
+	} else {
+		towerCfg = watchtower.TowerCfg{
+			Addr:        cfg.NodeAddr,
+			Net:         activeNetParams.Net,
+			StartHeight: int(db.CurrentHeight()),
+		}
+	}
+
 	// Start a watchtower instance and listen for new blocks
 	txParser := txClosure(db, rpcSubChan)
 	blockParser := blockClosure(db)
 
-	towerCfg := watchtower.TowerCfg{
-		Addr:        cfg.NodeAddr,
-		Net:         activeNetParams.Net,
-		StartHeight: 0, //int(db.CurrentHeight()),
-	}
 	watchtower.Create(towerCfg, txParser, blockParser)
 }
 
@@ -112,9 +138,9 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 
 	curH := db.CurrentHeight()
 
-	println("Database hieights: ", curH, actualH)
+	println("Database hieghts:", curH, actualH)
 	// Fudge factor
-	if curH < actualH-40 || cfg.Rebuild {
+	if curH < actualH-499 || cfg.Rebuild {
 		println("Creating DB")
 		// init db
 		db, err = InitDb(cfg.DbFile)
@@ -135,7 +161,6 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 		}
 
 	}
-
 	return db
 }
 
