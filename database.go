@@ -19,6 +19,13 @@ type LiteDb struct {
 	conn   *sql.DB
 }
 
+type blockRecord struct {
+	// maps to a row stored in the db
+	hash     *btcwire.ShaHash
+	prevhash *btcwire.ShaHash
+	height   int
+}
+
 func LoadDb(dbpath string) (*LiteDb, error) {
 	conn, err := sql.Open("sqlite3", dbpath)
 	if err != nil {
@@ -142,4 +149,37 @@ func (db *LiteDb) BatchInsertBH(blcks []*Block, height int) error {
 	}
 
 	return nil
+}
+
+func (db *LiteDb) GetBlkRecord(target *btcwire.ShaHash) (*blockRecord, error) {
+	cmd := `SELECT hash, prevhash, height FROM blocks WHERE hash=$1`
+	rows, err := db.conn.Query(cmd, target.String())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	rows.Next()
+	// called for effect
+	var hash, prevhash string
+	var height int
+	if err := rows.Scan(&hash, &prevhash, &height); err != nil {
+		return nil, err
+	}
+
+	btchash, err := btcwire.NewShaHashFromStr(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	btcprevhash, err := btcwire.NewShaHashFromStr(prevhash)
+	if err != nil {
+		return nil, err
+	}
+
+	blkrec := &blockRecord{
+		hash:     btchash,
+		prevhash: btcprevhash,
+		height:   height,
+	}
+	return blkrec, nil
 }

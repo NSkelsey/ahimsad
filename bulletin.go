@@ -118,3 +118,23 @@ func (bltn *Bulletin) TxOuts() ([]*btcwire.TxOut, error) {
 
 	return []*btcwire.TxOut{}, nil
 }
+
+func GetAuthor(authorTx *btcwire.MsgTx, i uint32) (string, error) {
+	// Returns the "Author" who signed a message from the outpoint at index i.
+	relScript := authorTx.TxOut[i].PkScript
+	// This pubkeyscript defines the author of the post
+
+	scriptClass, addrs, _, err := btcscript.ExtractPkScriptAddrs(relScript, activeNetParams)
+	if err != nil {
+		return "", err
+	}
+	if scriptClass != btcscript.PubKeyHashTy {
+		return "", fmt.Errorf("Author script is not p2pkh")
+	}
+	// We know that the returned value is a P2PKH; therefore it must have
+	// one address which is the author of the attached bulletin
+	author := addrs[0].String()
+
+	return author, nil
+
+}

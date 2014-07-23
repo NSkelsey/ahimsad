@@ -5,6 +5,7 @@ import (
 	"log"
 	"path/filepath"
 
+	"github.com/NSkelsey/watchtower"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcrpcclient"
 	"github.com/conformal/btcscript"
@@ -18,16 +19,18 @@ var (
 	defaultConfigFile = filepath.Join(appDataDir, "ahimsa.conf")
 	defaultDbName     = filepath.Join(appDataDir, "pubrecord.db")
 	defaultBlockDir   = filepath.Join(btcutil.AppDataDir(".bitcoin", false), "blocks")
+	defaultNodeAddr   = "127.0.0.1:18333"
 	// Sane defaults for a linux based OS
 	cfg = &config{
 		ConfigFile: defaultConfigFile,
 		BlockDir:   defaultBlockDir,
 		DbFile:     defaultDbName,
+		NodeAddr:   defaultNodeAddr,
 		Rebuild:    false,
 	}
-
-	// Application globals
 )
+
+// Application globals
 var activeNetParams *btcnet.Params
 
 type config struct {
@@ -38,6 +41,7 @@ type config struct {
 	RPCAddr     string `long:"rpcaddr" description:"Address of bitcoin rpc endpoint to use"`
 	RPCUser     string `long:"rpcuser" description:"rpc user"`
 	RPCPassword string `long:"rpcpassword" description:"rpc password"`
+	NodeAddr    string `long:"nodeaddr" description:"Address + port of the bitcoin node to connect to"`
 }
 
 func main() {
@@ -65,15 +69,32 @@ func main() {
 		log.Fatal(err)
 	}
 
+	println("WHAT IS GOING ON ")
+	fmt.Println(getBanner())
+	println("WHAT IS GOING ON ")
 	// Load db
 	db := loadDb(rpcclient)
 
 	if err != nil {
 		log.Fatal(err)
 	}
-	println("Current Db height:", db.CurrentHeight())
+	println("Db Height:", db.CurrentHeight())
+
+	rpcSubChan := make(chan *TxReq)
+
+	// start a rpc command handler
+	go authorlookup(rpcclient, rpcSubChan)
 
 	// Start a watchtower instance and listen for new blocks
+	txParser := txClosure(db, rpcSubChan)
+	blockParser := blockClosure(db)
+
+	towerCfg := watchtower.TowerCfg{
+		Addr:        cfg.NodeAddr,
+		Net:         activeNetParams.Net,
+		StartHeight: 0, //int(db.CurrentHeight()),
+	}
+	watchtower.Create(towerCfg, txParser, blockParser)
 }
 
 func loadDb(client *btcrpcclient.Client) *LiteDb {
@@ -91,8 +112,9 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 
 	curH := db.CurrentHeight()
 
-	println("Database heights: ", curH, actualH)
-	if curH < actualH || cfg.Rebuild {
+	println("Database hieights: ", curH, actualH)
+	// Fudge factor
+	if curH < actualH-40 || cfg.Rebuild {
 		println("Creating DB")
 		// init db
 		db, err = InitDb(cfg.DbFile)
