@@ -6,6 +6,7 @@ import (
 	"log"
 
 	_ "code.google.com/p/go-sqlite/go1/sqlite3"
+	"github.com/NSkelsey/btcsubprotos/ahimsa"
 	"github.com/NSkelsey/protocol"
 	"github.com/conformal/btcwire"
 )
@@ -104,7 +105,7 @@ func (db *LiteDb) storeBlockHead(bh *btcwire.BlockHeader, height int) error {
 	return nil
 }
 
-func (db *LiteDb) storeBulletin(bltn *Bulletin) error {
+func (db *LiteDb) storeBulletin(bltn *ahimsa.Bulletin) error {
 	// Writes a bulletin into the sqlite db
 
 	cmd := `INSERT INTO bulletins (txid, block, author, topic, message) VALUES($1, $2, $3, $4, $5)`

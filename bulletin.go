@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"code.google.com/p/goprotobuf/proto"
+	"github.com/NSkelsey/protocol/protoc"
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcwire"
 )
@@ -65,7 +66,7 @@ func NewBulletin(tx *btcwire.MsgTx, author string, blkhash *btcwire.ShaHash) (*B
 	// Creates a new bulletin from the containing Tx, supplied author and optional blockhash
 
 	// unpack txOuts that are considered data, We are going to ignore extra junk at the end of data
-	wireBltn := &WireBulletin{}
+	wireBltn := &protocol.WireBulletin{}
 
 	bytes, err := extractData(tx.TxOut)
 	if err != nil {

@@ -14,7 +14,6 @@ import (
 )
 
 var (
-	logger      = log.New(os.Stdout, "", log.Llongfile)
 	empt        = [32]byte{}
 	genesisHash = [32]byte{}
 	maxBlocks   = 500000

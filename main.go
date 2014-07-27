@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/NSkelsey/btcbuilder"
@@ -35,6 +36,7 @@ var (
 
 // Application globals
 var activeNetParams *btcnet.Params
+var logger *log.Logger = log.New(os.Stdout, "", log.Llongfile)
 
 type config struct {
 	ConfigFile  string `short:"C" long:"configfile" description:"Path to configuration file"`
