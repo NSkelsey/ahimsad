@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/NSkelsey/btcbuilder"
+	"github.com/NSkelsey/btcsubprotos/ahimsa"
 	"github.com/NSkelsey/watchtower"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcrpcclient"
@@ -36,7 +37,7 @@ var (
 
 // Application globals
 var activeNetParams *btcnet.Params
-var logger *log.Logger = log.New(os.Stdout, "", log.Llongfile)
+var logger *log.Logger = log.New(os.Stdout, "", log.Ltime|log.Lshortfile)
 
 type config struct {
 	ConfigFile  string `short:"C" long:"configfile" description:"Path to configuration file"`
@@ -231,7 +232,7 @@ func storeChainBulletins(genBlock *Block, db *LiteDb, client *btcrpcclient.Clien
 			// one address which is the author of the attached bulletin
 			author := addrs[0].String()
 
-			bltn, err := NewBulletin(tx, author, &blockhash)
+			bltn, err := ahimsa.NewBulletin(tx, author, &blockhash)
 			if err != nil {
 				return err
 			}

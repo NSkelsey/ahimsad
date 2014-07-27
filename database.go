@@ -106,17 +106,28 @@ func (db *LiteDb) storeBlockHead(bh *btcwire.BlockHeader, height int) error {
 }
 
 func (db *LiteDb) storeBulletin(bltn *ahimsa.Bulletin) error {
-	// Writes a bulletin into the sqlite db
+	// Writes a bulletin into the sqlite db, runs an insert or update
 
-	cmd := `INSERT INTO bulletins (txid, block, author, topic, message) VALUES($1, $2, $3, $4, $5)`
-
-	_, err := db.conn.Exec(cmd,
-		bltn.txid.String(),
-		bltn.block.String(),
-		bltn.Author,
-		bltn.Topic,
-		bltn.Message,
-	)
+	var err error
+	if bltn.Block == nil {
+		cmd := `INSERT OR REPLACE INTO bulletins (txid, author, topic, message) VALUES($1, $2, $3, $4)`
+		_, err = db.conn.Exec(cmd,
+			bltn.Txid.String(),
+			bltn.Author,
+			bltn.Topic,
+			bltn.Message,
+		)
+	} else {
+		blockstr := bltn.Block.String()
+		cmd := `INSERT OR REPLACE INTO bulletins (txid, block, author, topic, message) VALUES($1, $2, $3, $4, $5)`
+		_, err = db.conn.Exec(cmd,
+			bltn.Txid.String(),
+			blockstr,
+			bltn.Author,
+			bltn.Topic,
+			bltn.Message,
+		)
+	}
 	if err != nil {
 		return err
 	}
