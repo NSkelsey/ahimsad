@@ -6,8 +6,7 @@ import (
 	"log"
 
 	_ "code.google.com/p/go-sqlite/go1/sqlite3"
-	"github.com/NSkelsey/btcsubprotos/ahimsa"
-	"github.com/NSkelsey/protocol"
+	"github.com/NSkelsey/protocol/ahimsa"
 	"github.com/conformal/btcwire"
 )
 
@@ -67,7 +66,7 @@ func InitDb(dbpath string) (*LiteDb, error) {
 	}
 
 	// Get the database schema for the public record.
-	create, err := protocol.GetCreateSql()
+	create, err := ahimsa.GetCreateSql()
 	if err != nil {
 		return nil, err
 	}
