@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/NSkelsey/btcbuilder"
-	"github.com/NSkelsey/btcsubprotos/ahimsa"
+	"github.com/NSkelsey/protocol/ahimsa"
 	"github.com/NSkelsey/watchtower"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcrpcclient"

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/NSkelsey/btcsubprotos"
-	"github.com/NSkelsey/btcsubprotos/ahimsa"
+	"github.com/NSkelsey/protocol/ahimsa"
 	"github.com/NSkelsey/watchtower"
 	"github.com/conformal/btcrpcclient"
 	"github.com/conformal/btcwire"
