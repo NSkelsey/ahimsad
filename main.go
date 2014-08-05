@@ -24,6 +24,7 @@ var (
 	defaultBlockDir   = filepath.Join(btcutil.AppDataDir(".bitcoin", false), "blocks")
 	defaultNetwork    = "TestNet3"
 	defaultNodeAddr   = "127.0.0.1:18333"
+	defaultRPCAddr    = "127.0.0.1:18332"
 	// Sane defaults for a linux based OS
 	cfg = &config{
 		ConfigFile: defaultConfigFile,
@@ -31,6 +32,7 @@ var (
 		DbFile:     defaultDbName,
 		NodeAddr:   defaultNodeAddr,
 		NetName:    defaultNetwork,
+		RPCAddr:    defaultRPCAddr,
 		Rebuild:    false,
 	}
 )
@@ -56,19 +58,26 @@ func main() {
 	parser := flags.NewParser(cfg, flags.None)
 	_, err := parser.Parse()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
+	}
+
+	// Check to see if application files exist and create them if not
+	_, err = os.Stat(appDataDir)
+	if err != nil {
+		makeDataDir()
 	}
 
 	err = flags.NewIniParser(parser).ParseFile(cfg.ConfigFile)
 	if err != nil {
-		log.Fatal(err)
+		logger.Println("No config file provided, using command line params")
 	}
 
 	activeNetParams, err = btcbuilder.NetParamsFromStr(cfg.NetName)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
+	// Configure and create a RPC client
 	connCfg := &btcrpcclient.ConnConfig{
 		Host:         cfg.RPCAddr,
 		User:         cfg.RPCUser,
@@ -78,7 +87,15 @@ func main() {
 	}
 	rpcclient, err := btcrpcclient.New(connCfg, nil)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
+	}
+	// Test rpc connection
+	if err := rpcclient.Ping(); err != nil {
+		logger.Println(err)
+		msg := `You need to correctly set rpcuser and rpcpassword for ahimsad to work properly.
+Additionally check to see if you are using the TestNet or MainNet.`
+		println(msg)
+		os.Exit(1)
 	}
 
 	rpcSubChan := make(chan *TxReq)
@@ -87,23 +104,30 @@ func main() {
 	go authorlookup(rpcclient, rpcSubChan)
 
 	fmt.Println(getBanner())
+	// Load the db and find its current chain height
 	db := loadDb(rpcclient)
 
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	curH := db.CurrentHeight()
 	actualH, err := rpcclient.GetBlockCount()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	println("Db Height:", curH)
 
+	// If the database reports a height lower than the current height reported by
+	// the bitcoin node but is within 500 blocks we can avoid redownloading the
+	// whole chain. This is done at the network level with a getblocks msg for
+	// any blocks we are missing. This is a relatively simple optimization and it
+	// gives us 3 days of wiggle room before the whole chain must be validated
+	// again.
 	var towerCfg watchtower.TowerCfg
 	if actualH-curH > 0 {
 		getblocks, err := makeBlockMsg(db)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 		towerCfg = watchtower.TowerCfg{
 			Addr:        cfg.NodeAddr,
@@ -126,17 +150,46 @@ func main() {
 	watchtower.Create(towerCfg, txParser, blockParser)
 }
 
+func makeDataDir() {
+	// Creates the application data dir initializing it with a config file that
+	// is empty.
+
+	// create dir
+	perms := os.ModeDir | 0700
+	if err := os.Mkdir(appDataDir, perms); err != nil {
+		logger.Fatal(err)
+	}
+
+	// touch config file
+	f, err := os.Create(defaultConfigFile)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		logger.Fatal(err)
+	}
+
+	// touch db file
+	f, err = os.Create(defaultDbName)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		logger.Fatal(err)
+	}
+}
+
 func loadDb(client *btcrpcclient.Client) *LiteDb {
 	// Load the db from the file specified in config and get it to a usuable state
 	// where ahimsad can add blocks from the network
 	db, err := LoadDb(cfg.DbFile)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	actualH, err := client.GetBlockCount()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	curH := db.CurrentHeight()
@@ -148,19 +201,19 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 		// init db
 		db, err = InitDb(cfg.DbFile)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 
 		// get the tip of the longest valid chain
 		tip, err := runBlockScan(cfg.BlockDir, db)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 
 		genBlk := walkBackwards(tip)
 		err = storeChainBulletins(genBlk, db, client)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 
 	}
