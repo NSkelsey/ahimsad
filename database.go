@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"log"
 
 	_ "code.google.com/p/go-sqlite/go1/sqlite3"
 	"github.com/NSkelsey/protocol/ahimsa"
@@ -29,7 +28,7 @@ type blockRecord struct {
 func LoadDb(dbpath string) (*LiteDb, error) {
 	conn, err := sql.Open("sqlite3", dbpath)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	db := &LiteDb{
@@ -53,7 +52,7 @@ func (db *LiteDb) CurrentHeight() int64 {
 	var height int64
 	err = rows.Scan(&height)
 	if err != nil {
-		log.Println(err)
+		//logger.Println(err)
 		return 0
 	}
 	return height
