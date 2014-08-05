@@ -21,7 +21,7 @@ var (
 	appDataDir        = btcutil.AppDataDir("ahimsa", false)
 	defaultConfigFile = filepath.Join(appDataDir, "ahimsa.conf")
 	defaultDbName     = filepath.Join(appDataDir, "pubrecord.db")
-	defaultBlockDir   = filepath.Join(btcutil.AppDataDir(".bitcoin", false), "blocks")
+	defaultBlockDir   = filepath.Join(btcutil.AppDataDir(".bitcoin", false), "testnet3/blocks")
 	defaultNetwork    = "TestNet3"
 	defaultNodeAddr   = "127.0.0.1:18333"
 	defaultRPCAddr    = "127.0.0.1:18332"
