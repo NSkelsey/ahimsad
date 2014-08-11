@@ -91,12 +91,18 @@ func InitDb(dbpath string) (*LiteDb, error) {
 func (db *LiteDb) storeBlockHead(bh *btcwire.BlockHeader, height int) error {
 	// Writes a block to the sqlite db
 
-	cmd := `INSERT INTO blocks (hash, prevhash, height) VALUES($1, $2, $3)`
+	cmd := `INSERT INTO blocks (hash, prevhash, height, timestamp) VALUES($1, $2, $3, $4)`
 
 	hash, _ := bh.BlockSha()
 
 	println(hash.String(), height)
-	_, err := db.conn.Exec(cmd, hash.String(), bh.PrevBlock.String(), height)
+
+	_, err := db.conn.Exec(cmd,
+		hash.String(),
+		bh.PrevBlock.String(),
+		height,
+		bh.Timestamp.Unix(),
+	)
 	if err != nil {
 		return err
 	}
@@ -135,7 +141,7 @@ func (db *LiteDb) storeBulletin(bltn *ahimsa.Bulletin) error {
 
 func (db *LiteDb) BatchInsertBH(blcks []*Block, height int) error {
 
-	stmt, err := db.conn.Prepare("INSERT INTO blocks (hash, prevhash, height) VALUES(?, ?, ?)")
+	stmt, err := db.conn.Prepare("INSERT INTO blocks (hash, prevhash, height, timestamp) VALUES(?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -149,7 +155,11 @@ func (db *LiteDb) BatchInsertBH(blcks []*Block, height int) error {
 		bh := btcBHFromBH(*blk.Head)
 		hash, _ := bh.BlockSha()
 		prevh := bh.PrevBlock
-		_, err = tx.Stmt(stmt).Exec(hash.String(), prevh.String(), height-blk.depth)
+		_, err = tx.Stmt(stmt).Exec(
+			hash.String(),
+			prevh.String(),
+			height-blk.depth,
+			bh.Timestamp.Unix())
 		if err != nil {
 			return err
 		}

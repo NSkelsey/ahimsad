@@ -65,7 +65,7 @@ func btcBHFromBH(bh BlockHead) *btcwire.BlockHeader {
 }
 
 func blockHash(bh BlockHead) [32]byte {
-	// Print the hash of the block from the headers in the block
+	// Return the hash of the block from the headers in the block
 	btcbh := btcBHFromBH(bh)
 	hash, _ := btcbh.BlockSha()
 	return [32]byte(hash)
@@ -150,12 +150,9 @@ func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]
 			seenGenesis = true
 			genesisHash = hash
 			// Make the hash of the genesis block useful
-			var s [32]byte
-			copy(s[:], hash[:])
-			for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
-				s[i], s[j] = s[j], s[i]
-			}
-			fmt.Printf("The hash of the genesis block:\n%x\n", s)
+			genBlock := btcBHFromBH(bh)
+			_hash, _ := genBlock.BlockSha()
+			fmt.Printf("The hash of the genesis block:\n%s\n", _hash)
 		}
 		blkMap[hash] = &blk
 		blkList = append(blkList, &blk)
