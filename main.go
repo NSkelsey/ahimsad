@@ -25,6 +25,7 @@ var (
 	defaultNetwork    = "TestNet3"
 	defaultNodeAddr   = "127.0.0.1:18333"
 	defaultRPCAddr    = "127.0.0.1:18332"
+	debug             = false
 	// Sane defaults for a linux based OS
 	cfg = &config{
 		ConfigFile: defaultConfigFile,
@@ -39,7 +40,7 @@ var (
 
 // Application globals
 var activeNetParams *btcnet.Params
-var logger *log.Logger = log.New(os.Stdout, "", log.Ltime|log.Llongfile)
+var logger *log.Logger = log.New(os.Stdout, "", log.Ltime)
 
 type config struct {
 	ConfigFile  string `short:"C" long:"configfile" description:"Path to configuration file"`
@@ -51,6 +52,7 @@ type config struct {
 	RPCPassword string `long:"rpcpassword" description:"RPC password"`
 	NodeAddr    string `long:"nodeaddr" description:"Address + port of the bitcoin node to connect to"`
 	NetName     string `short:"n" long:"network" description:"The name of the network to use"`
+	Debug       bool   `shodt:"d" long:"debug" description:"Debug flag for verbose error logging"`
 	PrintHelp   bool   `short:"h" long:"help" description:"Prints out this message"`
 }
 
@@ -82,6 +84,11 @@ func main() {
 	activeNetParams, err = btcbuilder.NetParamsFromStr(cfg.NetName)
 	if err != nil {
 		logger.Fatal(err)
+	}
+
+	// Configure debug logger for verbose output
+	if debug {
+		logger = log.New(os.Stdout, "DEBUG\t", log.Ltime|log.Llongfile)
 	}
 
 	// Configure and create a RPC client

@@ -22,37 +22,18 @@ func txClosure(db *LiteDb, subChan chan *TxReq) func(*watchtower.TxMeta) {
 		// just inserting if they are not.
 		if btcsubprotos.IsBulletin(meta.MsgTx) {
 
-			// Here we request for information about the author of the message via
-			// JSON-RPC. This is handled in another goroutine
-			authOutpoint := meta.MsgTx.TxIn[0].PreviousOutpoint
-			resChan := make(chan *btcwire.MsgTx)
-			req := &TxReq{
-				// This defines the author
-				txid:         &authOutpoint.Hash,
-				responseChan: resChan,
-			}
-
-			subChan <- req
-			// Send request for author tx, wait for response
-			authorTx, ok := <-resChan
-			var author string
-			if !ok {
+			// Here we determine the author of the tx
+			author, err := ahimsa.GetAuthor(meta.MsgTx, activeNetParams)
+			if err != nil {
 				author = "NULL"
-			} else {
-				var err error // scoping issues
-				author, err = ahimsa.GetAuthor(authorTx, authOutpoint.Index, activeNetParams)
-				if err != nil {
-					author = "NULL"
-					logger.Println(err)
-					return
-				}
+				logger.Println(err)
+				return
 			}
 
 			var bltn *ahimsa.Bulletin
-			var err error
 			if meta.BlockSha != nil {
 				bhash := btcwire.ShaHash{}
-				err := bhash.SetBytes(meta.BlockSha)
+				err = bhash.SetBytes(meta.BlockSha)
 				if err != nil {
 					logger.Println(err)
 					return
