@@ -16,21 +16,23 @@ Bitcoin takes a while to download the blockchain so just remember to exercise yo
 It is not in our scope to explain how to install Bitcoin, so we are just going to describe
 the nessecary tweaks that are needed with a default install of Bitcoin.
 
-### Automatic! (for the Americans)
+### Automatic! 
 
 You can run it to install ahimsad. This script assumes a lot about your system.
 It actually assumes that you are using _my_ system.
 I run Ubuntu 14.04 servers, so this will probably work on that.
 
-```
+```bash
 $ wget https://raw.githubusercontent.com/NSkelsey/protocol/master/deploy/install_everything.sh
 $ source install_everything.sh; ahimsad_deps
 ```
 
 ### Manual!
 
-Install and configure bitcoin. This is the longest step by far.
-A typical bitcoin.conf file for a system that is running ahimsad looks like:
+####Install and configure bitcoin. 
+
+This is the longest step by far.
+A typical bitcoin.conf file for a system that runs ahimsad looks like:
 
 ```
 rpcuser=[your-user]
@@ -39,11 +41,11 @@ testnet=1
 server=1
 ```
 
-Install and configure go. 
+####Install and configure go. 
 
 Set GOPATH, GOROOT and add $GOPATH/bin to your $PATH
 
-Download and build ahimsad:
+####Download and build ahimsad
 ```bash
 $ apt get install mercurial git
 $ go get github.com/NSkelsey/ahimsad/...
@@ -56,23 +58,25 @@ You need to correctly set rpcuser and rpcpassword for ahimsad to work properly.
 Additionally check to see if you are using the TestNet or MainNet.
 ```
 
-
-If that worked, then its time to configure it. See [sample.conf](https://github.com/NSkelsey/ahimsad/blob/master/sample.conf) for sample 
+####Configure ahimsad
+See [sample.conf](https://github.com/NSkelsey/ahimsad/blob/master/sample.conf) for sample 
 configurations of ahimsad. 
 
-Note that all that is required in ~/.ahimsa/ahimsa.conf to run on testnet is:
-```
-rpcuser=[same-as-above]
-rpcpassword=[same-as-above]
-```
-
-Let the blockchain download or kickstart the process by downloading a checkpoint.
-When bitcoind reports that it is caught up, you are ready to run ahimsasd!
+When bitcoind has caught up to the longest valid chain you are ready to run ahimsasd!
 
 ```bash
 $ ahimsad
 ```
 
-####Note! 
-bitcoind must be running for ahimsad to function properly.
+
+####Notes
+
+All that is required in ~/.ahimsa/ahimsa.conf to run ahimsad on testnet is:
+```
+rpcuser=[same-as-above]
+rpcpassword=[same-as-above]
+```
+
+- Let the blockchain download or kickstart the process by downloading a checkpoint.
+- bitcoind must be running for ahimsad to function properly.
 
