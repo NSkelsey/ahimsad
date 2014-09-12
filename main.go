@@ -47,10 +47,11 @@ type config struct {
 	DbFile      string `long:"dbname" description:"Name of the database file"`
 	Rebuild     bool   `long:"rebuild" description:"Flag to rebuild the pubrecord db"`
 	RPCAddr     string `long:"rpcaddr" description:"Address of bitcoin rpc endpoint to use"`
-	RPCUser     string `long:"rpcuser" description:"rpc user"`
-	RPCPassword string `long:"rpcpassword" description:"rpc password"`
+	RPCUser     string `long:"rpcuser" description:"RPC username"`
+	RPCPassword string `long:"rpcpassword" description:"RPC password"`
 	NodeAddr    string `long:"nodeaddr" description:"Address + port of the bitcoin node to connect to"`
 	NetName     string `short:"n" long:"network" description:"The name of the network to use"`
+	PrintHelp   bool   `short:"h" long:"help" description:"Prints out this message"`
 }
 
 func main() {
@@ -58,7 +59,13 @@ func main() {
 	parser := flags.NewParser(cfg, flags.None)
 	_, err := parser.Parse()
 	if err != nil {
+		parser.WriteHelp(os.Stdout)
 		logger.Fatal(err)
+	}
+
+	if cfg.PrintHelp {
+		parser.WriteHelp(os.Stdout)
+		os.Exit(0)
 	}
 
 	// Check to see if application files exist and create them if not
@@ -92,8 +99,7 @@ func main() {
 	// Test rpc connection
 	if err := rpcclient.Ping(); err != nil {
 		logger.Println(err)
-		msg := `You need to correctly set rpcuser and rpcpassword for ahimsad to work properly.
-Additionally check to see if you are using the TestNet or MainNet.`
+		msg := "\nYou need to correctly set rpcuser and rpcpassword for ahimsad to work properly.\nAdditionally check to see if you are using TestNet3 or MainNet.\n"
 		println(msg)
 		os.Exit(1)
 	}
