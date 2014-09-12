@@ -1,22 +1,23 @@
 ahimsad
-=======
+-------
 
 A Bitcoin daemon that builds and maintains a sqlite database built from Bitcoin's blockchain.
 ahimsad processes the blockchain looking for messages stored in our format. 
 It also connects to a live Bitcoin node and listens for new messages forwarded over the network.
-We think that storing small messages in blockchains is a real usecase for a distributed timestamp authority (E.G. Bitcoin). 
+We think that storing small messages in blockchains is a real usecase for a distributed timestamp authority (e.g. Bitcoin). 
 
 
 Installing
-==========
+----------
 If you are running a 64-bit linux distribution then follow these intstuctions.
 Alternatively there is a script to install all of these dependencies in one go that
 lives [here](http://github.com/NSkelsey/protocol/blob/master/deploy/install_everything.sh).
 Bitcoin takes a while to download the blockchain so just remember to exercise your patience.
 It is not in our scope to explain how to install Bitcoin, so we are just going to describe
-the nessecary tweaks that are needed with a default install of Bitcoin.
+the necessary tweaks that are needed with a default install of Bitcoin.
 
-### Automatic! 
+Automatic! 
+=========
 
 You can run it to install ahimsad. This script assumes a lot about your system.
 It actually assumes that you are using _my_ system.
@@ -27,7 +28,8 @@ $ wget https://raw.githubusercontent.com/NSkelsey/protocol/master/deploy/install
 $ source install_everything.sh; ahimsad_deps
 ```
 
-### Manual!
+Manual!
+=======
 
 ####Install and configure bitcoin. 
 
@@ -77,6 +79,5 @@ rpcuser=[same-as-above]
 rpcpassword=[same-as-above]
 ```
 
-- Let the blockchain download or kickstart the process by downloading a checkpoint.
 - bitcoind must be running for ahimsad to function properly.
-
+- The initial construction of the pubrecord.db from blockfiles should take around 2 hours on Mainnet.
