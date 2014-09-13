@@ -8,7 +8,7 @@ It also connects to a live Bitcoin node and listens for new messages forwarded o
 We think that storing small messages in blockchains is a real usecase for a distributed timestamp authority (e.g. Bitcoin). 
 
 
-Installing
+Installation
 ==========
 If you are running a 64-bit linux distribution then the install will work otherwise you are out of luck. 
 There is a script to install all of these dependencies in one go that
@@ -47,7 +47,7 @@ server=1
 
 ####Install and configure go. 
 
-Set GOPATH, GOROOT and add $GOPATH/bin to your $PATH.
+Set $GOPATH, $GOROOT and add $GOPATH/bin to your $PATH.
 Google has great instructions regarding how to do this.
 
 ####Download and build ahimsad
@@ -82,5 +82,5 @@ rpcuser=[same-as-above]
 rpcpassword=[same-as-above]
 ```
 
-- bitcoind must be running for ahimsad to function properly.
+- bitcoind must be running for ahimsad to function.
 - The initial construction of the pubrecord.db from blockfiles should take around 2 hours on Mainnet.
