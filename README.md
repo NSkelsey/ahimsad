@@ -1,5 +1,6 @@
 ahimsad
--------
+=======
+
 
 A Bitcoin daemon that builds and maintains a sqlite database built from Bitcoin's blockchain.
 ahimsad processes the blockchain looking for messages stored in our format. 
@@ -8,18 +9,19 @@ We think that storing small messages in blockchains is a real usecase for a dist
 
 
 Installing
-----------
-If you are running a 64-bit linux distribution then follow these intstuctions.
-Alternatively there is a script to install all of these dependencies in one go that
+==========
+If you are running a 64-bit linux distribution then the install will work otherwise you are out of luck. 
+There is a script to install all of these dependencies in one go that
 lives [here](http://github.com/NSkelsey/protocol/blob/master/deploy/install_everything.sh).
 Bitcoin takes a while to download the blockchain so just remember to exercise your patience.
 It is not in our scope to explain how to install Bitcoin, so we are just going to describe
-the necessary tweaks that are needed with a default install of Bitcoin.
+the necessary tweaks that are needed with a default install.
 
 Automatic! 
-=========
+----------
 
-You can run it to install ahimsad. This script assumes a lot about your system.
+You can run a script to install everything needed for  ahimsad. 
+This script assumes a lot about your system.
 It actually assumes that you are using _my_ system.
 I run Ubuntu 14.04 servers, so this will probably work on that.
 
@@ -29,7 +31,7 @@ $ source install_everything.sh; ahimsad_deps
 ```
 
 Manual!
-=======
+-------
 
 ####Install and configure bitcoin. 
 
@@ -45,7 +47,8 @@ server=1
 
 ####Install and configure go. 
 
-Set GOPATH, GOROOT and add $GOPATH/bin to your $PATH
+Set GOPATH, GOROOT and add $GOPATH/bin to your $PATH.
+Google has great instructions regarding how to do this.
 
 ####Download and build ahimsad
 ```bash
