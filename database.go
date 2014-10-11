@@ -142,11 +142,13 @@ func (db *LiteDb) storeBulletin(bltn *ahimsa.Bulletin) error {
 func (db *LiteDb) BatchInsertBH(blcks []*Block, height int) error {
 
 	stmt, err := db.conn.Prepare("INSERT INTO blocks (hash, prevhash, height, timestamp) VALUES(?, ?, ?, ?)")
+	defer stmt.Close()
 	if err != nil {
 		return err
 	}
 
 	tx, err := db.conn.Begin()
+	defer tx.Commit()
 	if err != nil {
 		return err
 	}
@@ -175,10 +177,10 @@ func (db *LiteDb) BatchInsertBH(blcks []*Block, height int) error {
 func (db *LiteDb) GetBlkRecord(target *btcwire.ShaHash) (*blockRecord, error) {
 	cmd := `SELECT hash, prevhash, height FROM blocks WHERE hash=$1`
 	rows, err := db.conn.Query(cmd, target.String())
+	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	blkrec, err := scanBlkRec(rows)
 	if err != nil {
 		return nil, err
@@ -189,10 +191,10 @@ func (db *LiteDb) GetBlkRecord(target *btcwire.ShaHash) (*blockRecord, error) {
 func (db *LiteDb) GetChainTip() (*blockRecord, error) {
 	cmd := `SELECT hash, prevhash, max(height) FROM blocks`
 	rows, err := db.conn.Query(cmd)
+	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	blkrec, err := scanBlkRec(rows)
 	if err != nil {
 		return nil, err
