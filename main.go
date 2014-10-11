@@ -174,7 +174,7 @@ func makeDataDir() {
 	}
 
 	// touch config file
-	f, err := os.Create(defaultConfigFile)
+	f, err := os.Create(cfg.ConfigFile)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func makeDataDir() {
 	}
 
 	// touch db file
-	f, err = os.Create(defaultDbName)
+	f, err = os.Create(cfg.DbFile)
 	if err != nil {
 		logger.Fatal(err)
 	}
