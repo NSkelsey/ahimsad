@@ -136,30 +136,26 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	}
 	println("Db Height:", curH)
 
+	// Configure the live network feed
+	towerCfg := watchtower.TowerCfg{
+		Addr:        cfg.NodeAddr,
+		Net:         activeNetParams.Net,
+		StartHeight: int(db.CurrentHeight()),
+		Logger:      logger,
+	}
+
 	// If the database reports a height lower than the current height reported by
 	// the bitcoin node but is within 500 blocks we can avoid redownloading the
 	// whole chain. This is done at the network level with a getblocks msg for
 	// any blocks we are missing. This is a relatively simple optimization and it
 	// gives us 3 days of wiggle room before the whole chain must be validated
 	// again.
-	var towerCfg watchtower.TowerCfg
 	if actualH-curH > 0 {
 		getblocks, err := makeBlockMsg(db)
 		if err != nil {
 			logger.Fatal(err)
 		}
-		towerCfg = watchtower.TowerCfg{
-			Addr:        cfg.NodeAddr,
-			Net:         activeNetParams.Net,
-			StartHeight: int(db.CurrentHeight()),
-			ToSend:      []btcwire.Message{getblocks},
-		}
-	} else {
-		towerCfg = watchtower.TowerCfg{
-			Addr:        cfg.NodeAddr,
-			Net:         activeNetParams.Net,
-			StartHeight: int(db.CurrentHeight()),
-		}
+		towerCfg.ToSend = []btcwire.Message{getblocks}
 	}
 
 	// Start a watchtower instance and listen for new blocks
