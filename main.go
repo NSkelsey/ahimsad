@@ -106,8 +106,14 @@ func main() {
 	// Test rpc connection
 	if err := rpcclient.Ping(); err != nil {
 		logger.Println(err)
-		msg := "\nYou need to correctly set rpcuser and rpcpassword for ahimsad to work properly.\nAdditionally check to see if you are using TestNet3 or MainNet.\n"
-		println(msg)
+		msg := `
+Connecting to the Bitcoin via RPC failed!! This may have been caused by one of the following:
+1. Bitcoind is not running
+2. The RPC server is not activated (server=1)
+3. rpcuser and rpcpassword were not set
+4. You are using Testnet3 settings for a Mainnet server or vice versa.
+`
+		fmt.Printf(msg)
 		os.Exit(1)
 	}
 
@@ -278,7 +284,7 @@ func storeChainBulletins(genBlock *Block, db *LiteDb, client *btcrpcclient.Clien
 		blockhash, _ := bh.BlockSha()
 		for _, tx := range blk.RelTxs {
 			// Get author of bulletin via RPC call
-			authOutpoint := tx.TxIn[0].PreviousOutpoint
+			authOutpoint := tx.TxIn[0].PreviousOutPoint
 			asyncRes := client.GetRawTransactionAsync(&authOutpoint.Hash)
 			authorTx, err := asyncRes.Receive()
 			if err != nil {

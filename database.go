@@ -114,22 +114,24 @@ func (db *LiteDb) storeBulletin(bltn *ahimsa.Bulletin) error {
 
 	var err error
 	if bltn.Block == nil {
-		cmd := `INSERT OR REPLACE INTO bulletins (txid, author, topic, message) VALUES($1, $2, $3, $4)`
+		cmd := `INSERT OR REPLACE INTO bulletins (txid, author, board, message, timestamp) VALUES($1, $2, $3, $4, $5)`
 		_, err = db.conn.Exec(cmd,
 			bltn.Txid.String(),
 			bltn.Author,
-			bltn.Topic,
+			bltn.Board,
 			bltn.Message,
+			bltn.Timestamp,
 		)
 	} else {
 		blockstr := bltn.Block.String()
-		cmd := `INSERT OR REPLACE INTO bulletins (txid, block, author, topic, message) VALUES($1, $2, $3, $4, $5)`
+		cmd := `INSERT OR REPLACE INTO bulletins (txid, block, author, board, message, timestamp) VALUES($1, $2, $3, $4, $5, $6)`
 		_, err = db.conn.Exec(cmd,
 			bltn.Txid.String(),
 			blockstr,
 			bltn.Author,
-			bltn.Topic,
+			bltn.Board,
 			bltn.Message,
+			bltn.Timestamp,
 		)
 	}
 	if err != nil {

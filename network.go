@@ -51,7 +51,7 @@ func txClosure(db *LiteDb, subChan chan *TxReq) func(*watchtower.TxMeta) {
 				}
 			}
 
-			logger.Printf("Topic: %s", bltn.Topic)
+			logger.Printf("Board: %s", bltn.Board)
 			if err := db.storeBulletin(bltn); err != nil {
 				logger.Println(err)
 				return
