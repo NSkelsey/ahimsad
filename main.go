@@ -134,7 +134,6 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	if err != nil {
 		logger.Fatal(err)
 	}
-	println("Db Height:", curH)
 
 	// Configure the live network feed
 	towerCfg := watchtower.TowerCfg{
@@ -209,7 +208,7 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 
 	curH := db.CurrentHeight()
 
-	println("Database hieghts:", curH, actualH)
+	fmt.Printf("Block database heights [ahimsad: %d, bitcoind: %d]\n", curH, actualH)
 	// Fudge factor
 	if curH < actualH-499 || cfg.Rebuild {
 		println("Creating DB")
