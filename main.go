@@ -39,7 +39,7 @@ var (
 
 // Application globals
 var activeNetParams *btcnet.Params
-var logger *log.Logger = log.New(os.Stdout, "", log.Ltime)
+var logger *log.Logger = log.New(os.Stdout, "", log.Ltime|log.Ldate)
 
 // Configurable parameters
 type config struct {
@@ -143,7 +143,7 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	if err != nil {
 		logger.Fatal(err)
 	}
-	fmt.Printf("The current best hash: [%s]\n", chaintip.hash)
+	fmt.Printf("The current best hash:\t[%s]\n", chaintip.hash)
 
 	// If the database reports a height lower than the current height reported by
 	// the bitcoin node but is within 500 blocks we can avoid redownloading the
@@ -208,7 +208,7 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 
 	curH := db.CurrentHeight()
 
-	fmt.Printf("Block database heights [ahimsad: %d, bitcoind: %d]\n", curH, actualH)
+	fmt.Printf("Block database heights:\t[ahimsad: %d, bitcoind: %d]\n", curH, actualH)
 	// Fudge factor
 	if curH < actualH-500 || cfg.Rebuild {
 		println("Creating DB")
@@ -282,11 +282,15 @@ func storeChainState(genBlock *Block, db *LiteDb, client *btcrpcclient.Client) e
 			hash, _ := tx.TxSha()
 			bltn, err := ahimsa.NewBulletin(tx, &blockhash, activeNetParams)
 			if err != nil {
-				logger.Printf("Failed to decode: %s, with err: %s\n", hash, err)
+				if cfg.Debug {
+					logger.Printf("Failed to decode: [%s] with err: [%s]\n", hash, err)
+				}
 				continue
 			}
 			if err := db.storeBulletin(bltn); err != nil {
-				logger.Printf("Failed to store: %s, with err: %s\n", hash, err)
+				if cfg.Debug {
+					logger.Printf("Failed to store: [%s] with err: [%s]\n", hash, err)
+				}
 				continue
 			}
 		}

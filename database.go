@@ -14,8 +14,7 @@ var (
 )
 
 type LiteDb struct {
-	writes int
-	conn   *sql.DB
+	conn *sql.DB
 }
 
 type blockRecord struct {

@@ -187,7 +187,7 @@ func runBlockScan(blockdir string, db *LiteDb) (*Block, error) {
 		return nil, fmt.Errorf("Could not find any blockfiles at %s", blockdir)
 	}
 
-	fmt.Printf("About to process %d blockfiles\n", len(blockfiles))
+	logger.Printf("About to process %d blockfiles\n", len(blockfiles))
 	blkList := make([]*Block, 0, maxBlocks)
 	blkMap := make(map[[32]byte]*Block)
 	for _, filename := range blockfiles {
@@ -202,7 +202,7 @@ func runBlockScan(blockdir string, db *LiteDb) (*Block, error) {
 	genesisBlk := linkChain(blkList, blkMap)
 	// find the tip of the longest chain
 	tip, h := chainTip(genesisBlk)
-	fmt.Printf("\nHeight: %d\n", h)
+	logger.Printf("\nHeight from block files: [%d]\n", h)
 
 	return tip, nil
 }
