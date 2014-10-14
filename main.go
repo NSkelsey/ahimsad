@@ -39,8 +39,9 @@ var (
 
 // Application globals
 var activeNetParams *btcnet.Params
-var logger *log.Logger = log.New(os.Stdout, "", log.Llongfile)
+var logger *log.Logger = log.New(os.Stdout, "", log.Ltime)
 
+// Configurable parameters
 type config struct {
 	ConfigFile  string `short:"C" long:"configfile" description:"Path to configuration file"`
 	BlockDir    string `long:"blockdir" description:"Path to bitcoin blockdir"`
@@ -51,7 +52,7 @@ type config struct {
 	RPCPassword string `long:"rpcpassword" description:"RPC password"`
 	NodeAddr    string `long:"nodeaddr" description:"Address + port of the bitcoin node to connect to"`
 	NetName     string `short:"n" long:"network" description:"The name of the network to use"`
-	Debug       bool   `shodt:"d" long:"debug" description:"Debug flag for verbose error logging"`
+	Debug       bool   `short:"d" long:"debug" description:"Debug flag for verbose error logging"`
 	PrintHelp   bool   `short:"h" long:"help" description:"Prints out this message"`
 }
 
@@ -116,11 +117,6 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 		os.Exit(1)
 	}
 
-	rpcSubChan := make(chan *TxReq)
-
-	// start a rpc command handler
-	go authorlookup(rpcclient, rpcSubChan)
-
 	fmt.Println(getBanner())
 	// Load the db and find its current chain height
 	db := loadDb(rpcclient)
@@ -142,30 +138,35 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 		Logger:      logger,
 	}
 
+	// Get the db's longest chain
+	chaintip, err := db.GetChainTip()
+	if err != nil {
+		logger.Fatal(err)
+	}
+	fmt.Printf("The current best hash: [%s]\n", chaintip.hash)
+
 	// If the database reports a height lower than the current height reported by
 	// the bitcoin node but is within 500 blocks we can avoid redownloading the
 	// whole chain. This is done at the network level with a getblocks msg for
 	// any blocks we are missing. This is a relatively simple optimization and it
 	// gives us 3 days of wiggle room before the whole chain must be validated
 	// again.
-	if actualH-curH > 0 {
-		getblocks, err := makeBlockMsg(db)
-		if err != nil {
-			logger.Fatal(err)
-		}
+	if actualH > curH {
+		getblocks := makeBlockMsg(db, chaintip)
+		// pass in message as first thing to send
 		towerCfg.ToSend = []btcwire.Message{getblocks}
 	}
 
 	// Start a watchtower instance and listen for new blocks
-	txParser := txClosure(db, rpcSubChan)
+	txParser := txClosure(db)
 	blockParser := blockClosure(db)
 
 	watchtower.Create(towerCfg, txParser, blockParser)
 }
 
+// Creates the application data dir initializing it with a config file that
+// is empty.
 func makeDataDir() {
-	// Creates the application data dir initializing it with a config file that
-	// is empty.
 
 	// create dir
 	perms := os.ModeDir | 0700
@@ -192,9 +193,9 @@ func makeDataDir() {
 	}
 }
 
+// Load the db from the file specified in config and get it to a usuable state
+// from where ahimsad can add blocks from the network
 func loadDb(client *btcrpcclient.Client) *LiteDb {
-	// Load the db from the file specified in config and get it to a usuable state
-	// where ahimsad can add blocks from the network
 	db, err := LoadDb(cfg.DbFile)
 	if err != nil {
 		logger.Fatal(err)
@@ -209,7 +210,7 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 
 	fmt.Printf("Block database heights [ahimsad: %d, bitcoind: %d]\n", curH, actualH)
 	// Fudge factor
-	if curH < actualH-499 || cfg.Rebuild {
+	if curH < actualH-500 || cfg.Rebuild {
 		println("Creating DB")
 		// init db
 		db, err = InitDb(cfg.DbFile)
@@ -276,16 +277,16 @@ func storeChainState(genBlock *Block, db *LiteDb, client *btcrpcclient.Client) e
 		bh = btcBHFromBH(*blk.Head)
 
 		blockhash, _ := bh.BlockSha()
-		hash, _ := tx.TxSha()
 		// Pave over bulletins that failed to make it into the db. Log the problem
 		for _, tx := range blk.RelTxs {
-			bltn, err := ahimsa.NewBulletin(tx, &blockhash)
+			hash, _ := tx.TxSha()
+			bltn, err := ahimsa.NewBulletin(tx, &blockhash, activeNetParams)
 			if err != nil {
-				logger.Errorf("Failed to decode: %s, with err: %s", hash, err)
+				logger.Printf("Failed to decode: %s, with err: %s\n", hash, err)
 				continue
 			}
 			if err := db.storeBulletin(bltn); err != nil {
-				logger.Errorf("Failed to store: %s, with err: %s", hash, err)
+				logger.Printf("Failed to store: %s, with err: %s\n", hash, err)
 				continue
 			}
 		}
