@@ -11,7 +11,6 @@ import (
 	"github.com/NSkelsey/watchtower"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcrpcclient"
-	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	"github.com/jessevdk/go-flags"
@@ -40,7 +39,7 @@ var (
 
 // Application globals
 var activeNetParams *btcnet.Params
-var logger *log.Logger = log.New(os.Stdout, "", log.Ltime)
+var logger *log.Logger = log.New(os.Stdout, "", log.Llongfile)
 
 type config struct {
 	ConfigFile  string `short:"C" long:"configfile" description:"Path to configuration file"`
@@ -108,7 +107,7 @@ func main() {
 		logger.Println(err)
 		msg := `
 Connecting to the Bitcoin via RPC failed!! This may have been caused by one of the following:
-1. Bitcoind is not running
+1. Bitcoind is not running or it is still starting
 2. The RPC server is not activated (server=1)
 3. rpcuser and rpcpassword were not set
 4. You are using Testnet3 settings for a Mainnet server or vice versa.
@@ -226,7 +225,7 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 		}
 
 		genBlk := walkBackwards(tip)
-		err = storeChainBulletins(genBlk, db, client)
+		err = storeChainState(genBlk, db, client)
 		if err != nil {
 			logger.Fatal(err)
 		}
@@ -235,10 +234,10 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 	return db
 }
 
-func storeChainBulletins(genBlock *Block, db *LiteDb, client *btcrpcclient.Client) error {
-	// Stores all of the Bulletins we found in the blockchain into the sqlite db.
-	// This is done iteratively and is not optimized in any way. We log errors as
-	// we encounter them.
+// Stores the entire chains state from the block linked list provided. The first
+// step is the batch insertion of block headers 1000 at a time. Then individual
+// bulletins are added one at a time.
+func storeChainState(genBlock *Block, db *LiteDb, client *btcrpcclient.Client) error {
 	chainHeight := genBlock.depth
 	blks := make([]*Block, 0, 1000)
 	var blk *Block = genBlock
@@ -267,7 +266,7 @@ func storeChainBulletins(genBlock *Block, db *LiteDb, client *btcrpcclient.Clien
 	}
 
 	// We are now back at the tip
-	//var tip *Block = blk
+	// meaning: blockTip = blk
 	for {
 		// walk backwards through blocks
 		if blk.Hash == genesisHash {
@@ -278,34 +277,17 @@ func storeChainBulletins(genBlock *Block, db *LiteDb, client *btcrpcclient.Clien
 		bh = btcBHFromBH(*blk.Head)
 
 		blockhash, _ := bh.BlockSha()
+		hash, _ := tx.TxSha()
+		// Pave over bulletins that failed to make it into the db. Log the problem
 		for _, tx := range blk.RelTxs {
-			// Get author of bulletin via RPC call
-			authOutpoint := tx.TxIn[0].PreviousOutPoint
-			asyncRes := client.GetRawTransactionAsync(&authOutpoint.Hash)
-			authorTx, err := asyncRes.Receive()
+			bltn, err := ahimsa.NewBulletin(tx, &blockhash)
 			if err != nil {
-				return err
-			}
-			// This pubkeyscript defines the author of the post
-			relScript := authorTx.MsgTx().TxOut[authOutpoint.Index].PkScript
-
-			scriptClass, addrs, _, err := btcscript.ExtractPkScriptAddrs(relScript, activeNetParams)
-			if err != nil {
-				return err
-			}
-			if scriptClass != btcscript.PubKeyHashTy {
-				return fmt.Errorf("Author script is not p2pkh")
-			}
-			// We know that the returned value is a P2PKH; therefore it must have
-			// one address which is the author of the attached bulletin
-			author := addrs[0].String()
-
-			bltn, err := ahimsa.NewBulletin(tx, author, &blockhash)
-			if err != nil {
-				return err
+				logger.Errorf("Failed to decode: %s, with err: %s", hash, err)
+				continue
 			}
 			if err := db.storeBulletin(bltn); err != nil {
-				return err
+				logger.Errorf("Failed to store: %s, with err: %s", hash, err)
+				continue
 			}
 		}
 

@@ -19,8 +19,8 @@ var (
 	maxBlocks   = 500000
 )
 
+// A struct that matches the exact format of blocks stored in blk*.dat files
 type BlockHead struct {
-	// A struct that matches the exact format of blocks stored in blk*.dat files
 	Magic      [4]byte
 	Length     uint32
 	Version    int32
@@ -31,8 +31,8 @@ type BlockHead struct {
 	Nonce      uint32
 }
 
+// A custom block object for processing as a linked list
 type Block struct {
-	// A custom block object for processing
 	PrevBlock *Block
 	NextBlock *Block
 	Head      *BlockHead
@@ -47,8 +47,8 @@ func check(err error) {
 	}
 }
 
+// utility function to convert custom BlockHead type to btcwire BlockHeader
 func btcBHFromBH(bh BlockHead) *btcwire.BlockHeader {
-	// utility function to convert custom BlockHead type to btcwire BlockHeader
 	prevhash, _ := btcwire.NewShaHash(bh.PrevHash[:])
 	merkle, _ := btcwire.NewShaHash(bh.MerkleRoot[:])
 	timestamp := time.Unix(int64(bh.Timestamp), 0)
@@ -64,15 +64,15 @@ func btcBHFromBH(bh BlockHead) *btcwire.BlockHeader {
 	return &btcbh
 }
 
+// Return the hash of the block from the headers in the block
 func blockHash(bh BlockHead) [32]byte {
-	// Return the hash of the block from the headers in the block
 	btcbh := btcBHFromBH(bh)
 	hash, _ := btcbh.BlockSha()
 	return [32]byte(hash)
 }
 
+// Finds the start of the next block and places the cursor on it
 func proceed(f *os.File) bool {
-	// finds the start of the next block and places the cursor on it
 	for {
 		var b [4]byte
 		_, err := io.ReadFull(f, b[:])
@@ -89,10 +89,10 @@ func proceed(f *os.File) bool {
 	}
 }
 
+// Given a blk file attempts to parse every block within it. Adding the block
+// to a global list of seen blocks. Additionally we strip out the interesting
+// transactions at this stage.
 func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]*Block, map[[32]byte]*Block, error) {
-	// given a blk file attempts to parse every block within it. Adding the block
-	// to a global list of seen blocks. Additionally we strip out the interesting
-	// transactions at this stage.
 	file, err := os.Open(fname)
 	if err != nil {
 		return blkList, blkMap, err
@@ -175,10 +175,9 @@ func getHeight(blk *Block, target [32]byte) int {
 	}
 }
 
+// Reads the bitcoin ~/.bitcoin/block dir for the block chain and pushes it into
+// the DB
 func runBlockScan(blockdir string, db *LiteDb) (*Block, error) {
-	// Reads the bitcoin ~/.bitcoin/block dir for the block chain and pushes it into
-	// the DB
-
 	glob := "/blk*.dat"
 	blockfiles, err := filepath.Glob(blockdir + glob)
 	if err != nil {
@@ -204,31 +203,16 @@ func runBlockScan(blockdir string, db *LiteDb) (*Block, error) {
 	// find the tip of the longest chain
 	tip, h := chainTip(genesisBlk)
 	fmt.Printf("\nHeight: %d\n", h)
-	//printBlockHead(*tip.Head)
 
 	return tip, nil
 }
 
-func collectRelTxs(blk *Block) []*btcwire.MsgTx {
-	txs := make([]*btcwire.MsgTx, 0, 10000)
-	for {
-		if blk.Hash == genesisHash {
-			break
-		}
-		for _, tx := range blk.RelTxs {
-			txs = append(txs, tx)
-		}
-		blk = blk.PrevBlock
-	}
-	return txs
-}
-
+// Walks the block list backwards & builds out the linked list so that on a
+// walk back up we can return the block at the end of the longest chain
 func linkChain(blkList []*Block, blkMap map[[32]byte]*Block) *Block {
-	// Walks the block list backwards & builds out the linked list so that on a
-	// walk back up we can return the block at the end of the longest chain
 	absents := 0
+	// this loop starts at the end of the blocklist and proceeds backwards
 	for j := len(blkList) - 1; j >= 0; j-- {
-		// this loop starts at the end of the blocklist and proceeds backwards
 		blk := blkList[j]
 		if blk.Hash == genesisHash {
 			break
@@ -308,8 +292,8 @@ func readVarInt(r io.Reader, pver uint32) (uint64, error) {
 	return rv, nil
 }
 
+// Prints out header from a given block
 func printBlockHead(blk BlockHead) {
-	// Prints out header from a given block
 
 	prevhash, _ := btcwire.NewShaHash(blk.PrevHash[:])
 	merkle, _ := btcwire.NewShaHash(blk.MerkleRoot[:])
