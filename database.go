@@ -73,6 +73,7 @@ func InitDb(dbpath string) (*LiteDb, error) {
 	dropcmd := `
 	DROP TABLE IF EXISTS blocks;
 	DROP TABLE IF EXISTS bulletins;
+	DROP TABLE IF EXISTS blacklist;
 	`
 
 	// DROP db if it exists and recreate it.
@@ -95,8 +96,6 @@ func (db *LiteDb) storeBlockHead(bh *btcwire.BlockHeader, height int) error {
 
 	hash, _ := bh.BlockSha()
 
-	println(hash.String(), height)
-
 	_, err := db.conn.Exec(cmd,
 		hash.String(),
 		bh.PrevBlock.String(),
@@ -109,8 +108,9 @@ func (db *LiteDb) storeBlockHead(bh *btcwire.BlockHeader, height int) error {
 	return nil
 }
 
+// Writes a bulletin into the sqlite db, runs an insert or update depending on whether
+// block hash exists.
 func (db *LiteDb) storeBulletin(bltn *ahimsa.Bulletin) error {
-	// Writes a bulletin into the sqlite db, runs an insert or update
 
 	var err error
 	if bltn.Block == nil {
@@ -141,6 +141,8 @@ func (db *LiteDb) storeBulletin(bltn *ahimsa.Bulletin) error {
 	return nil
 }
 
+// Generates a batch insert from the list of blocks provided. Intended to
+// speed up the initial dump of headers into the db.
 func (db *LiteDb) BatchInsertBH(blcks []*Block, height int) error {
 
 	stmt, err := db.conn.Prepare("INSERT INTO blocks (hash, prevhash, height, timestamp) VALUES(?, ?, ?, ?)")
@@ -176,40 +178,36 @@ func (db *LiteDb) BatchInsertBH(blcks []*Block, height int) error {
 	return nil
 }
 
+// Returns a block record specified by target hash. If the block does not exists
+// the function returns a sql.ErrNoRows error.
 func (db *LiteDb) GetBlkRecord(target *btcwire.ShaHash) (*blockRecord, error) {
 	cmd := `SELECT hash, prevhash, height FROM blocks WHERE hash=$1`
-	rows, err := db.conn.Query(cmd, target.String())
-	defer rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	blkrec, err := scanBlkRec(rows)
+	row := db.conn.QueryRow(cmd, target.String())
+
+	blkrec, err := scanBlkRec(row)
 	if err != nil {
 		return nil, err
 	}
 	return blkrec, nil
 }
 
+// Returns the block that has the greatest height according to the db.
 func (db *LiteDb) GetChainTip() (*blockRecord, error) {
 	cmd := `SELECT hash, prevhash, max(height) FROM blocks`
-	rows, err := db.conn.Query(cmd)
-	defer rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	blkrec, err := scanBlkRec(rows)
+	row := db.conn.QueryRow(cmd)
+
+	blkrec, err := scanBlkRec(row)
 	if err != nil {
 		return nil, err
 	}
 	return blkrec, nil
 }
 
-func scanBlkRec(rows *sql.Rows) (*blockRecord, error) {
-	rows.Next()
-	// called for effect
+// Creates a Block record from a single row.
+func scanBlkRec(row *sql.Row) (*blockRecord, error) {
 	var hash, prevhash string
 	var height int
-	if err := rows.Scan(&hash, &prevhash, &height); err != nil {
+	if err := row.Scan(&hash, &prevhash, &height); err != nil {
 		return nil, err
 	}
 
