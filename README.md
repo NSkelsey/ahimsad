@@ -1,5 +1,6 @@
 ahimsad
 =======
+[![Build Status](https://travis-ci.org/NSkelsey/ahimsad.svg?branch=master)](https://travis-ci.org/NSkelsey/ahimsad)
 
 
 A Bitcoin daemon that builds and maintains a sqlite database built from Bitcoin's blockchain.
