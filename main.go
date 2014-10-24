@@ -152,7 +152,10 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	// gives us 3 days of wiggle room before the whole chain must be validated
 	// again.
 	if actualH > curH {
-		getblocks := makeBlockMsg(db, chaintip)
+		getblocks, err := makeBlockMsg(db, chaintip)
+		if err != nil {
+			logger.Fatal(err)
+		}
 		// pass in message as first thing to send
 		towerCfg.ToSend = []btcwire.Message{getblocks}
 	}

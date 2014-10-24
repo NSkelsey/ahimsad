@@ -90,9 +90,21 @@ func blockClosure(db *LiteDb) func(time.Time, *btcwire.MsgBlock) {
 	return blockParser
 }
 
-// Returns a getblocks msg whose hashstop is the current highest chain in the db.
-func makeBlockMsg(db *LiteDb, chaintip *blockRecord) btcwire.Message {
-	msg := btcwire.NewMsgGetBlocks(chaintip.hash)
-	msg.AddBlockLocatorHash(chaintip.hash)
-	return msg
+// Returns a getblocks msg whose hashstop is 6 blocks back from the
+// current highest chain in the db.
+func makeBlockMsg(db *LiteDb, chaintip *blockRecord) (btcwire.Message, error) {
+
+	var curblk *blockRecord = chaintip
+	var err error
+	for i := 0; i < 6; i++ {
+		curblk, err = db.GetBlkRecord(curblk.prevhash)
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
+	msg := btcwire.NewMsgGetBlocks(curblk.hash)
+	msg.AddBlockLocatorHash(curblk.hash)
+	return msg, nil
 }
