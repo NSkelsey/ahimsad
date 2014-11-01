@@ -148,29 +148,29 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	}
 	fmt.Printf("The current best hash:\t[%s]\n", chaintip.hash)
 
-	// Start a watchtower instance and listen for new blocks
-	txParser := txClosure(db)
-	blockParser := blockClosure(db, btcMsgChan)
-
-	go watchtower.Create(towerCfg, txParser, blockParser)
-
 	// If the database reports a height lower than the current height reported by
 	// the bitcoin node but is within 500 blocks we can avoid redownloading the
 	// whole chain. This is done at the network level with a getblocks msg for
 	// any blocks we are missing. This is a relatively simple optimization and it
 	// gives us 3 days of wiggle room before the whole chain must be validated
 	// again.
-	if actualH > curH {
-		getblocks, err := makeBlockMsg(db, chaintip)
-		if err != nil {
-			logger.Fatal(err)
+	go func() {
+		if actualH > curH {
+			getblocks, err := makeBlockMsg(db, chaintip)
+			if err != nil {
+				logger.Fatal(err)
+			}
+			// pass in get block message as first thing to send
+			btcMsgChan <- getblocks
 		}
-		// pass in get block message as first thing to send
-		btcMsgChan <- getblocks
-	}
-	for {
+	}()
 
-	}
+	// Start a watchtower instance and listen for new blocks
+	txParser := txClosure(db)
+	blockParser := blockClosure(db, btcMsgChan)
+
+	watchtower.Create(towerCfg, txParser, blockParser)
+
 }
 
 // Creates the application data dir initializing it with a config file that
