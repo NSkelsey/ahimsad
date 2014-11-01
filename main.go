@@ -131,11 +131,14 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	}
 
 	// Configure the live network feed
+	btcMsgChan := make(chan btcwire.Message)
+
 	towerCfg := watchtower.TowerCfg{
 		Addr:        cfg.NodeAddr,
 		Net:         activeNetParams.Net,
 		StartHeight: int(db.CurrentHeight()),
 		Logger:      logger,
+		MsgChan:     btcMsgChan,
 	}
 
 	// Get the db's longest chain
@@ -144,6 +147,12 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 		logger.Fatal(err)
 	}
 	fmt.Printf("The current best hash:\t[%s]\n", chaintip.hash)
+
+	// Start a watchtower instance and listen for new blocks
+	txParser := txClosure(db)
+	blockParser := blockClosure(db, btcMsgChan)
+
+	go watchtower.Create(towerCfg, txParser, blockParser)
 
 	// If the database reports a height lower than the current height reported by
 	// the bitcoin node but is within 500 blocks we can avoid redownloading the
@@ -156,15 +165,12 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 		if err != nil {
 			logger.Fatal(err)
 		}
-		// pass in message as first thing to send
-		towerCfg.ToSend = []btcwire.Message{getblocks}
+		// pass in get block message as first thing to send
+		btcMsgChan <- getblocks
 	}
+	for {
 
-	// Start a watchtower instance and listen for new blocks
-	txParser := txClosure(db)
-	blockParser := blockClosure(db)
-
-	watchtower.Create(towerCfg, txParser, blockParser)
+	}
 }
 
 // Creates the application data dir initializing it with a config file that

@@ -59,7 +59,7 @@ func txClosure(db *LiteDb) func(*watchtower.TxMeta) {
 
 // Records blocks as they are seen. If the previous block is not in the
 // db, we ignore the block and log the problem
-func blockClosure(db *LiteDb) func(time.Time, *btcwire.MsgBlock) {
+func blockClosure(db *LiteDb, watchTChan chan btcwire.Message) func(time.Time, *btcwire.MsgBlock) {
 	blockParser := func(now time.Time, blk *btcwire.MsgBlock) {
 
 		hash, _ := blk.Header.BlockSha()
@@ -70,6 +70,12 @@ func blockClosure(db *LiteDb) func(time.Time, *btcwire.MsgBlock) {
 		prevblkrec, err := db.GetBlkRecord(&blk.Header.PrevBlock)
 		if err == sql.ErrNoRows {
 			logger.Printf("Prevblk is not in the DB: [%s]\n", blk.Header.PrevBlock)
+
+			// Since the block is not in the DB, it is probably a reorg. Therefore
+			// send a getBlk message to fill the missing blocks in.
+			msgGetBlks := btcwire.NewMsgGetBlocks(&hash)
+			msgGetBlks.AddBlockLocatorHash(&hash)
+			watchTChan <- msgGetBlks
 			return
 		}
 		if err != nil {
@@ -90,13 +96,13 @@ func blockClosure(db *LiteDb) func(time.Time, *btcwire.MsgBlock) {
 	return blockParser
 }
 
-// Returns a getblocks msg whose hashstop is 6 blocks back from the
+// Returns a getblocks msg whose hashstop is 3 blocks back from the
 // current highest chain in the db.
 func makeBlockMsg(db *LiteDb, chaintip *blockRecord) (btcwire.Message, error) {
 
 	var curblk *blockRecord = chaintip
 	var err error
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 3; i++ {
 		curblk, err = db.GetBlkRecord(curblk.prevhash)
 		if err != nil {
 			return nil, err
