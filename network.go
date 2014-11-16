@@ -69,13 +69,26 @@ func blockClosure(db *LiteDb, watchTChan chan btcwire.Message) func(time.Time, *
 
 		prevblkrec, err := db.GetBlkRecord(&blk.Header.PrevBlock)
 		if err == sql.ErrNoRows {
-			logger.Printf("Prevblk is not in the DB: [%s]\n", blk.Header.PrevBlock)
+			prevblk := blk.Header.PrevBlock
+			logger.Printf("Prevblk is not in the DB: [%s]\n", prevblk)
 
-			// Since the block is not in the DB, it is probably a reorg. Therefore
-			// send a getBlk message to fill the missing blocks in.
-			msgGetBlks := btcwire.NewMsgGetBlocks(&hash)
-			msgGetBlks.AddBlockLocatorHash(&hash)
+			// Since the prevblock is not in the DB it is probably a reorg.
+			// Therefore send a getBlk message to fill the missing blocks in.
+			msgGetBlks, err := makeBlockMsg(db)
+			if err != nil {
+				logger.Println(err)
+				return
+			}
+
+			logger.Println("Sending GetBlks msg")
 			watchTChan <- msgGetBlks
+			// Rerequest this block along with prevblk for good measure :-D
+			getPrevBlk := btcwire.NewMsgGetData()
+			getPrevBlk.InvList = []*btcwire.InvVect{
+				btcwire.NewInvVect(btcwire.InvTypeBlock, &prevblk),
+				btcwire.NewInvVect(btcwire.InvTypeBlock, &hash),
+			}
+			watchTChan <- getPrevBlk
 			return
 		}
 		if err != nil {
@@ -96,21 +109,38 @@ func blockClosure(db *LiteDb, watchTChan chan btcwire.Message) func(time.Time, *
 	return blockParser
 }
 
-// Returns a getblocks msg whose hashstop is 3 blocks back from the
-// current highest chain in the db.
-func makeBlockMsg(db *LiteDb, chaintip *blockRecord) (btcwire.Message, error) {
+// Returns a getblocks msg that requests the best chain.
+func makeBlockMsg(db *LiteDb) (btcwire.Message, error) {
+
+	chaintip, err := db.GetChainTip()
+	if err != nil {
+		return btcwire.NewMsgGetBlocks(nil), err
+	}
 
 	var curblk *blockRecord = chaintip
-	var err error
-	for i := 0; i < 3; i++ {
-		curblk, err = db.GetBlkRecord(curblk.prevhash)
+	msg := btcwire.NewMsgGetBlocks(curblk.hash)
+
+	heights := []int{}
+	step, start := 1, 0
+	for i := chaintip.height; i > 0; i -= step {
+		// Push last 10 indices first
+		if start >= 10 {
+			step *= 2
+		}
+		heights = append(heights, i)
+		start++
+	}
+	heights = append(heights, 0)
+
+	for _, h := range heights {
+
+		var err error
+		curblk, err := db.GetBlkRecHeight(h)
 		if err != nil {
 			return nil, err
 		}
-
+		msg.AddBlockLocatorHash(curblk.hash)
 	}
 
-	msg := btcwire.NewMsgGetBlocks(curblk.hash)
-	msg.AddBlockLocatorHash(curblk.hash)
 	return msg, nil
 }

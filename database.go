@@ -190,6 +190,21 @@ func (db *LiteDb) GetBlkRecord(target *btcwire.ShaHash) (*blockRecord, error) {
 	return blkrec, nil
 }
 
+func (db *LiteDb) GetBlkRecHeight(height int) (*blockRecord, error) {
+	cmd := `SELECT hash, prevhash, height FROM blocks 
+	WHERE height = $1
+	ORDER BY RANDOM()
+	LIMIT 1`
+
+	row := db.conn.QueryRow(cmd, height)
+
+	blkrec, err := scanBlkRec(row)
+	if err != nil {
+		return nil, err
+	}
+	return blkrec, nil
+}
+
 // Returns the block that has the greatest height according to the db.
 func (db *LiteDb) GetChainTip() (*blockRecord, error) {
 	cmd := `SELECT hash, prevhash, max(height) FROM blocks`

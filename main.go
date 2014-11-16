@@ -156,7 +156,7 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	// again.
 	go func() {
 		if actualH > curH {
-			getblocks, err := makeBlockMsg(db, chaintip)
+			getblocks, err := makeBlockMsg(db)
 			if err != nil {
 				logger.Fatal(err)
 			}
