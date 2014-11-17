@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/NSkelsey/ahimsadb"
 	"github.com/NSkelsey/btcsubprotos"
 	"github.com/NSkelsey/protocol/ahimsa"
 	"github.com/NSkelsey/watchtower"
@@ -17,7 +18,7 @@ import (
 // Builds the transaction parser that records bulletins as they come in off the wire.
 // The txParser attempts to update a row if the bulletin is already in the DB, otherwise
 // it just inserts a new row.
-func txClosure(db *LiteDb) func(*watchtower.TxMeta) {
+func txClosure(db *ahimsadb.PublicRecord) func(*watchtower.TxMeta) {
 
 	txParser := func(meta *watchtower.TxMeta) {
 		if btcsubprotos.IsBulletin(meta.MsgTx) {
@@ -46,7 +47,7 @@ func txClosure(db *LiteDb) func(*watchtower.TxMeta) {
 			}
 
 			logger.Printf("Stored bltn: [board: %s]", bltn.Board)
-			if err := db.storeBulletin(bltn); err != nil {
+			if err := db.StoreBulletin(bltn); err != nil {
 				logger.Println(err)
 				return
 			}
@@ -59,7 +60,7 @@ func txClosure(db *LiteDb) func(*watchtower.TxMeta) {
 
 // Records blocks as they are seen. If the previous block is not in the
 // db, we ignore the block and log the problem
-func blockClosure(db *LiteDb, watchTChan chan btcwire.Message) func(time.Time, *btcwire.MsgBlock) {
+func blockClosure(db *ahimsadb.PublicRecord, watchTChan chan btcwire.Message) func(time.Time, *btcwire.MsgBlock) {
 	blockParser := func(now time.Time, blk *btcwire.MsgBlock) {
 
 		hash, _ := blk.Header.BlockSha()
@@ -74,73 +75,45 @@ func blockClosure(db *LiteDb, watchTChan chan btcwire.Message) func(time.Time, *
 
 			// Since the prevblock is not in the DB it is probably a reorg.
 			// Therefore send a getBlk message to fill the missing blocks in.
-			msgGetBlks, err := makeBlockMsg(db)
+			msgGetBlks, err := db.MakeBlockMsg()
 			if err != nil {
 				logger.Println(err)
 				return
 			}
 
-			logger.Println("Sending GetBlks msg")
-			watchTChan <- msgGetBlks
 			// Rerequest this block along with prevblk for good measure :-D
 			getPrevBlk := btcwire.NewMsgGetData()
 			getPrevBlk.InvList = []*btcwire.InvVect{
 				btcwire.NewInvVect(btcwire.InvTypeBlock, &prevblk),
 				btcwire.NewInvVect(btcwire.InvTypeBlock, &hash),
 			}
+
+			logger.Println("Sending GetBlks msg")
+			watchTChan <- msgGetBlks
 			watchTChan <- getPrevBlk
 			return
 		}
+
 		if err != nil {
 			logger.Println(err)
 			return
 		}
-		height := prevblkrec.height + 1
 
-		err = db.storeBlockHead(&blk.Header, height)
+		newblkrec := &ahimsadb.BlockRecord{
+			Hash:      &hash,
+			PrevHash:  prevblkrec.Hash,
+			Height:    prevblkrec.Height + 1,
+			Timestamp: blk.Header.Timestamp.Unix(),
+		}
+
+		err = db.StoreBlockRecord(newblkrec)
 		if err != nil {
 			logger.Println(err)
 			return
 		}
-		logger.Printf("Stored block: [height: %d]\n", height)
 
+		logger.Printf("Stored block: [height: %d]\n", newblkrec.Height)
 		return
 	}
 	return blockParser
-}
-
-// Returns a getblocks msg that requests the best chain.
-func makeBlockMsg(db *LiteDb) (btcwire.Message, error) {
-
-	chaintip, err := db.GetChainTip()
-	if err != nil {
-		return btcwire.NewMsgGetBlocks(nil), err
-	}
-
-	var curblk *blockRecord = chaintip
-	msg := btcwire.NewMsgGetBlocks(curblk.hash)
-
-	heights := []int{}
-	step, start := 1, 0
-	for i := chaintip.height; i > 0; i -= step {
-		// Push last 10 indices first
-		if start >= 10 {
-			step *= 2
-		}
-		heights = append(heights, i)
-		start++
-	}
-	heights = append(heights, 0)
-
-	for _, h := range heights {
-
-		var err error
-		curblk, err := db.GetBlkRecHeight(h)
-		if err != nil {
-			return nil, err
-		}
-		msg.AddBlockLocatorHash(curblk.hash)
-	}
-
-	return msg, nil
 }

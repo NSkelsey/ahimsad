@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/NSkelsey/ahimsad/scanner"
+	"github.com/NSkelsey/ahimsadb"
 	"github.com/NSkelsey/btcbuilder"
 	"github.com/NSkelsey/protocol/ahimsa"
 	"github.com/NSkelsey/watchtower"
@@ -24,7 +26,6 @@ var (
 	defaultNetwork    = "TestNet3"
 	defaultNodeAddr   = "127.0.0.1:18333"
 	defaultRPCAddr    = "127.0.0.1:18332"
-	debug             = false
 	// Sane defaults for a linux based OS
 	cfg = &config{
 		ConfigFile: defaultConfigFile,
@@ -87,8 +88,8 @@ func main() {
 	}
 
 	// Configure debug logger for verbose output
-	if debug {
-		logger = log.New(os.Stdout, "DEBUG\t", log.Ltime|log.Llongfile)
+	if cfg.Debug {
+		logger = log.New(os.Stdout, "DEBUG ", log.Ltime|log.Llongfile)
 	}
 
 	// Configure and create a RPC client
@@ -119,12 +120,12 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 
 	fmt.Println(getBanner())
 	// Load the db and find its current chain height
-	db := loadDb(rpcclient)
+	db := initOrLoadDB(rpcclient)
 
 	if err != nil {
 		logger.Fatal(err)
 	}
-	curH := db.CurrentHeight()
+	curH := db.GetBlockCount()
 	actualH, err := rpcclient.GetBlockCount()
 	if err != nil {
 		logger.Fatal(err)
@@ -136,7 +137,7 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	towerCfg := watchtower.TowerCfg{
 		Addr:        cfg.NodeAddr,
 		Net:         activeNetParams.Net,
-		StartHeight: int(db.CurrentHeight()),
+		StartHeight: int(curH),
 		Logger:      logger,
 		MsgChan:     btcMsgChan,
 	}
@@ -146,7 +147,7 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	if err != nil {
 		logger.Fatal(err)
 	}
-	fmt.Printf("The current best hash:\t[%s]\n", chaintip.hash)
+	fmt.Printf("The current best hash:\t[%s]\n", chaintip.Hash)
 
 	// If the database reports a height lower than the current height reported by
 	// the bitcoin node but is within 500 blocks we can avoid redownloading the
@@ -156,7 +157,7 @@ Connecting to the Bitcoin via RPC failed!! This may have been caused by one of t
 	// again.
 	go func() {
 		if actualH > curH {
-			getblocks, err := makeBlockMsg(db)
+			getblocks, err := db.MakeBlockMsg()
 			if err != nil {
 				logger.Fatal(err)
 			}
@@ -202,38 +203,47 @@ func makeDataDir() {
 	}
 }
 
-// Load the db from the file specified in config and get it to a usuable state
-// from where ahimsad can add blocks from the network
-func loadDb(client *btcrpcclient.Client) *LiteDb {
-	db, err := LoadDb(cfg.DbFile)
+// Init or load the db from the file specified in config and get it to a usuable
+// state. Once ready ahimsad should be able to add blocks to the tip of the chain
+// as they come in off the network.
+func initOrLoadDB(client *btcrpcclient.Client) *ahimsadb.PublicRecord {
+
+	// Check to see if we can just load the db
+	failed := false
+	db, err := ahimsadb.LoadDB(cfg.DbFile)
 	if err != nil {
-		logger.Fatal(err)
+		failed = true
 	}
 
-	actualH, err := client.GetBlockCount()
-	if err != nil {
-		logger.Fatal(err)
-	}
+	var actualH, curH int64
 
-	curH := db.CurrentHeight()
+	if !failed {
+		var err error
+		actualH, err = client.GetBlockCount()
+		if err != nil {
+			logger.Fatal(err)
+		}
+
+		// Returns 0 if the db is uninitialized
+		curH = db.GetBlockCount()
+	}
 
 	fmt.Printf("Block database heights:\t[ahimsad: %d, bitcoind: %d]\n", curH, actualH)
 	// Fudge factor
-	if curH < actualH-500 || cfg.Rebuild {
+	if curH < actualH-500 || cfg.Rebuild || failed {
 		println("Creating DB")
 		// init db
-		db, err = InitDb(cfg.DbFile)
+		db, err = ahimsadb.InitDB(cfg.DbFile)
 		if err != nil {
 			logger.Fatal(err)
 		}
 
-		// get the tip of the longest valid chain
-		tip, err := runBlockScan(cfg.BlockDir, db)
+		// Scan the blockfiles and build out a blockchain model
+		genBlk, err := scanner.RunBlockScan(cfg.BlockDir, logger)
 		if err != nil {
 			logger.Fatal(err)
 		}
 
-		genBlk := walkBackwards(tip)
 		err = storeChainState(genBlk, db, client)
 		if err != nil {
 			logger.Fatal(err)
@@ -246,10 +256,10 @@ func loadDb(client *btcrpcclient.Client) *LiteDb {
 // Stores the entire chains state from the block linked list provided. The first
 // step is the batch insertion of block headers 1000 at a time. Then individual
 // bulletins are added one at a time.
-func storeChainState(genBlock *Block, db *LiteDb, client *btcrpcclient.Client) error {
-	chainHeight := genBlock.depth
-	blks := make([]*Block, 0, 1000)
-	var blk *Block = genBlock
+func storeChainState(genBlock *scanner.Block, db *ahimsadb.PublicRecord, client *btcrpcclient.Client) error {
+	chainHeight := genBlock.Depth
+	blks := make([]*scanner.Block, 0, 1000)
+	var blk *scanner.Block = genBlock
 	for {
 		// Walk forwards through the blocks
 		if blk.NextBlock == nil {
@@ -261,7 +271,7 @@ func storeChainState(genBlock *Block, db *LiteDb, client *btcrpcclient.Client) e
 			if err != nil {
 				return err
 			}
-			blks = make([]*Block, 0, 1000)
+			blks = make([]*scanner.Block, 0, 1000)
 		}
 		blks = append(blks, blk)
 
@@ -278,14 +288,14 @@ func storeChainState(genBlock *Block, db *LiteDb, client *btcrpcclient.Client) e
 	// meaning: blockTip = blk
 	for {
 		// walk backwards through blocks
-		if blk.Hash == genesisHash {
+		if blk.Hash == genBlock.Hash {
 			break
 		}
 
 		var bh *btcwire.BlockHeader
-		bh = btcBHFromBH(*blk.Head)
-
+		bh = scanner.ConvBHtoBTCBH(*blk.Head)
 		blockhash, _ := bh.BlockSha()
+
 		// Pave over bulletins that failed to make it into the db. Log the problem
 		for _, tx := range blk.RelTxs {
 			hash, _ := tx.TxSha()
@@ -296,7 +306,7 @@ func storeChainState(genBlock *Block, db *LiteDb, client *btcrpcclient.Client) e
 				}
 				continue
 			}
-			if err := db.storeBulletin(bltn); err != nil {
+			if err := db.StoreBulletin(bltn); err != nil {
 				if cfg.Debug {
 					logger.Printf("Failed to store: [%s] with err: [%s]\n", hash, err)
 				}

@@ -1,4 +1,4 @@
-package main
+package scanner
 
 import (
 	"encoding/binary"
@@ -14,6 +14,7 @@ import (
 )
 
 var (
+	logger      *log.Logger
 	empt        = [32]byte{}
 	genesisHash = [32]byte{}
 	maxBlocks   = 500000
@@ -38,7 +39,11 @@ type Block struct {
 	Head      *BlockHead
 	RelTxs    []*btcwire.MsgTx
 	Hash      [32]byte
-	depth     int
+	Depth     int
+}
+
+type Scanner struct {
+	logger *log.Logger
 }
 
 func check(err error) {
@@ -47,8 +52,8 @@ func check(err error) {
 	}
 }
 
-// utility function to convert custom BlockHead type to btcwire BlockHeader
-func btcBHFromBH(bh BlockHead) *btcwire.BlockHeader {
+// Public interface to convert a scanner.BlockHead into a btcwire BlockHeader
+func ConvBHtoBTCBH(bh BlockHead) *btcwire.BlockHeader {
 	prevhash, _ := btcwire.NewShaHash(bh.PrevHash[:])
 	merkle, _ := btcwire.NewShaHash(bh.MerkleRoot[:])
 	timestamp := time.Unix(int64(bh.Timestamp), 0)
@@ -66,7 +71,7 @@ func btcBHFromBH(bh BlockHead) *btcwire.BlockHeader {
 
 // Return the hash of the block from the headers in the block
 func blockHash(bh BlockHead) [32]byte {
-	btcbh := btcBHFromBH(bh)
+	btcbh := ConvBHtoBTCBH(bh)
 	hash, _ := btcbh.BlockSha()
 	return [32]byte(hash)
 }
@@ -144,13 +149,13 @@ func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]
 			Head:      &bh,
 			RelTxs:    reltxs,
 			Hash:      hash,
-			depth:     1,
+			Depth:     1,
 		}
 		if !seenGenesis {
 			seenGenesis = true
 			genesisHash = hash
 			// Make the hash of the genesis block useful
-			genBlock := btcBHFromBH(bh)
+			genBlock := ConvBHtoBTCBH(bh)
 			_hash, _ := genBlock.BlockSha()
 			fmt.Printf("The hash of the genesis block:\n%s\n", _hash)
 		}
@@ -165,7 +170,7 @@ func getHeight(blk *Block, target [32]byte) int {
 	for {
 		// give up after a few iterations
 		if blk.Hash == target {
-			return blk.depth
+			return blk.Depth
 		}
 		if blk.PrevBlock == nil {
 			err := fmt.Errorf("walked off the end of the chain")
@@ -175,9 +180,13 @@ func getHeight(blk *Block, target [32]byte) int {
 	}
 }
 
-// Reads the bitcoin ~/.bitcoin/block dir for the block chain and pushes it into
-// the DB
-func runBlockScan(blockdir string, db *LiteDb) (*Block, error) {
+// Reads the bitcoin ~/.bitcoin/block dir for the block chain and returns the
+// genesis blk linked all the way to the longest valid chain. Every orphaned
+// block is left out of the chain.
+func RunBlockScan(blockdir string, logger *log.Logger) (*Block, error) {
+	// Global b/c it is its own package
+	logger = logger
+
 	glob := "/blk*.dat"
 	blockfiles, err := filepath.Glob(blockdir + glob)
 	if err != nil {
@@ -201,10 +210,10 @@ func runBlockScan(blockdir string, db *LiteDb) (*Block, error) {
 	// glue block pointers together
 	genesisBlk := linkChain(blkList, blkMap)
 	// find the tip of the longest chain
-	tip, h := chainTip(genesisBlk)
+	_, h := chainTip(genesisBlk)
 	logger.Printf("\nHeight from block files: [%d]\n", h)
 
-	return tip, nil
+	return genesisBlk, nil
 }
 
 // Walks the block list backwards & builds out the linked list so that on a
@@ -223,9 +232,9 @@ func linkChain(blkList []*Block, blkMap map[[32]byte]*Block) *Block {
 			absents++
 		} else {
 			// this block points back to another block that we have in memory
-			currentD := blk.depth + 1
-			if prevBlk.depth < currentD {
-				prevBlk.depth = currentD
+			currentD := blk.Depth + 1
+			if prevBlk.Depth < currentD {
+				prevBlk.Depth = currentD
 				prevBlk.NextBlock = blk
 				blk.PrevBlock = prevBlk
 			}
@@ -317,9 +326,11 @@ timestamp:	%s
 difficulty:	%d
 nonce:		%d
 bit len:	%d
-==========
+==============
 `,
-		hash, prevhash.String(), merkle.String(), timestamp, blk.Difficulty, blk.Nonce, blk.Length)
+		hash, prevhash.String(),
+		merkle.String(), timestamp,
+		blk.Difficulty, blk.Nonce, blk.Length)
 }
 
 func walkBackwards(blk *Block) *Block {
