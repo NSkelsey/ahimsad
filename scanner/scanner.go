@@ -9,8 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/NSkelsey/btcsubprotos"
-	"github.com/conformal/btcwire"
+	"github.com/btcsuite/btcd/wire"
 )
 
 var (
@@ -37,7 +36,7 @@ type Block struct {
 	PrevBlock *Block
 	NextBlock *Block
 	Head      *BlockHead
-	RelTxs    []*btcwire.MsgTx
+	RelTxs    []*wire.MsgTx
 	Hash      [32]byte
 	Depth     int
 }
@@ -52,13 +51,13 @@ func check(err error) {
 	}
 }
 
-// Public interface to convert a scanner.BlockHead into a btcwire BlockHeader
-func ConvBHtoBTCBH(bh BlockHead) *btcwire.BlockHeader {
-	prevhash, _ := btcwire.NewShaHash(bh.PrevHash[:])
-	merkle, _ := btcwire.NewShaHash(bh.MerkleRoot[:])
+// Public interface to convert a scanner.BlockHead into a wire BlockHeader
+func ConvBHtoBTCBH(bh BlockHead) *wire.BlockHeader {
+	prevhash, _ := wire.NewShaHash(bh.PrevHash[:])
+	merkle, _ := wire.NewShaHash(bh.MerkleRoot[:])
 	timestamp := time.Unix(int64(bh.Timestamp), 0)
 
-	btcbh := btcwire.BlockHeader{
+	btcbh := wire.BlockHeader{
 		Version:    bh.Version,
 		PrevBlock:  *prevhash,
 		MerkleRoot: *merkle,
@@ -129,18 +128,18 @@ func processFile(fname string, blkList []*Block, blkMap map[[32]byte]*Block) ([]
 
 		hash := blockHash(bh)
 
-		reltxs := make([]*btcwire.MsgTx, 0)
+		reltxs := make([]*wire.MsgTx, 0)
 		// Process each tx in block
 		for i := uint64(0); i < tx_num; i++ {
-			tx := &btcwire.MsgTx{}
+			tx := &wire.MsgTx{}
 			err := tx.Deserialize(file)
 			if err != nil {
 				logger.Fatal(err)
 			}
 
-			if btcsubprotos.IsBulletin(tx) || btcsubprotos.IsDocProof(tx) {
-				reltxs = append(reltxs, tx)
-			}
+			// Append every transaction to the relevant transaction list.
+			// NOTE IF you wanted to classify transactions this is a good spot todo it.
+			reltxs = append(reltxs, tx)
 		}
 
 		blk = Block{
@@ -261,7 +260,7 @@ func recurseTip(blk *Block, height int) (*Block, int) {
 	}
 }
 
-// From btcwire common.go
+// From wire common.go
 func readVarInt(r io.Reader, pver uint32) (uint64, error) {
 	// readVarInt reads a variable length integer from r and returns it as a uint64.
 	var b [8]byte
@@ -304,11 +303,11 @@ func readVarInt(r io.Reader, pver uint32) (uint64, error) {
 // Prints out header from a given block
 func printBlockHead(blk BlockHead) {
 
-	prevhash, _ := btcwire.NewShaHash(blk.PrevHash[:])
-	merkle, _ := btcwire.NewShaHash(blk.MerkleRoot[:])
+	prevhash, _ := wire.NewShaHash(blk.PrevHash[:])
+	merkle, _ := wire.NewShaHash(blk.MerkleRoot[:])
 	timestamp := time.Unix(int64(blk.Timestamp), 0)
 
-	bh := btcwire.BlockHeader{
+	bh := wire.BlockHeader{
 		Version:    blk.Version,
 		PrevBlock:  *prevhash,
 		MerkleRoot: *merkle,
